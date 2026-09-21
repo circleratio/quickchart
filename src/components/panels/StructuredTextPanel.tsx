@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { useDocumentStore } from "../../core/store/documentStore";
 import { useSelectionStore } from "../../core/store/selectionStore";
@@ -145,6 +145,21 @@ function MatrixAxisLabelInputs({
   );
 }
 
+// Finds the id of the node immediately following `afterId` among its own
+// siblings - used right after addOutlineSibling to identify the row it just
+// created (that action doesn't return the new node's id itself), so focus
+// can be moved there. Returns null if `afterId` has no next sibling (it
+// shouldn't, right after adding one) or isn't found at all.
+function findNextSiblingId(nodes: OutlineNode[], afterId: string): string | null {
+  const index = nodes.findIndex((n) => n.id === afterId);
+  if (index !== -1) return nodes[index + 1]?.id ?? null;
+  for (const n of nodes) {
+    const found = findNextSiblingId(n.children, afterId);
+    if (found) return found;
+  }
+  return null;
+}
+
 function OutlineRow({
   node,
   blockId,
@@ -163,6 +178,21 @@ function OutlineRow({
   const indentOutlineNode = useDocumentStore((s) => s.indentOutlineNode);
   const outdentOutlineNode = useDocumentStore((s) => s.outdentOutlineNode);
   const moveOutlineNode = useDocumentStore((s) => s.moveOutlineNode);
+  const pendingFocusNodeId = useStructuredEditorStore((s) => s.pendingFocusNodeId);
+  const setPendingFocusNodeId = useStructuredEditorStore((s) => s.setPendingFocusNodeId);
+
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Claims and clears the pending-focus signal once this is the row it names
+  // (set below, right after Enter adds this row as a new sibling) - by the
+  // time this effect runs, the new row has mounted and can actually receive
+  // focus, which calling .focus() synchronously in the keydown handler could
+  // not do.
+  useEffect(() => {
+    if (pendingFocusNodeId !== node.id) return;
+    inputRef.current?.focus();
+    setPendingFocusNodeId(null);
+  }, [pendingFocusNodeId, node.id, setPendingFocusNodeId]);
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Tab") {
@@ -171,7 +201,11 @@ function OutlineRow({
       else indentOutlineNode(blockId, node.id);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (!disableAddSibling) addOutlineSibling(blockId, node.id);
+      if (disableAddSibling) return;
+      addOutlineSibling(blockId, node.id);
+      const block = useDocumentStore.getState().document.structuredBlocks.find((b) => b.id === blockId);
+      const newNodeId = block ? findNextSiblingId(block.outline, node.id) : null;
+      if (newNodeId) setPendingFocusNodeId(newNodeId);
     }
   }
 
@@ -179,6 +213,7 @@ function OutlineRow({
     <div className="outline-node">
       <div className="outline-row" style={{ paddingLeft: depth * 16 }}>
         <input
+          ref={inputRef}
           value={node.text}
           placeholder="項目を入力"
           onChange={(e) => updateOutlineNodeText(blockId, node.id, e.target.value)}
