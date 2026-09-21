@@ -391,6 +391,66 @@ describe("venn blocks (fully-relayouted, text-dependent pattern)", () => {
   });
 });
 
+describe("headingBullets blocks (fully-relayouted pattern)", () => {
+  function headingBulletsBlock(doc: Document) {
+    const { document, blockId } = sync.addEmptyStructuredBlock(doc, "headingBullets");
+    return { document: sync.addFirstOutlineNode(document, blockId), blockId };
+  }
+
+  it("generates a heading shape and a bullet shape per item, regenerating all shapes on a structural edit", () => {
+    let { document, blockId } = headingBulletsBlock(createEmptyDocument());
+    const rowId = nodeId(document, blockId, 0);
+    document = sync.addOutlineChild(document, blockId, rowId); // 1st bullet
+    document = sync.addOutlineChild(document, blockId, rowId); // 2nd bullet
+
+    const block = document.structuredBlocks[0];
+    expect(block.outline[0].children).toHaveLength(2);
+    // 1 heading shape + 2 bullet shapes.
+    expect(block.generatedShapeIds).toHaveLength(3);
+
+    const heading = block.generatedShapeIds.map((id) => document.shapes[id]).find((s) => s.templateNodeIds?.includes(rowId))!;
+    expect(heading.style.fill).not.toBe("none"); // solid-filled, unlike a bullet
+    const bullets = block.generatedShapeIds
+      .map((id) => document.shapes[id])
+      .filter((s) => s.type === "text" && s.bulletMarker);
+    expect(bullets).toHaveLength(2);
+    for (const b of bullets) expect(b.style.fill).toBe("none"); // borderless
+  });
+
+  it("stacks a 2nd row below the 1st and adds a dashed separator between them", () => {
+    let { document, blockId } = headingBulletsBlock(createEmptyDocument());
+    const row1Id = nodeId(document, blockId, 0);
+    document = sync.addOutlineSibling(document, blockId, row1Id); // 2nd row
+
+    const block = document.structuredBlocks[0];
+    const shapes = block.generatedShapeIds.map((id) => document.shapes[id]);
+    const row1 = shapes.find((s) => s.templateNodeIds?.includes(row1Id))!;
+    const row2Id = block.outline[1].id;
+    const row2 = shapes.find((s) => s.templateNodeIds?.includes(row2Id))!;
+    expect(row2.y).toBeGreaterThanOrEqual(row1.y + row1.height);
+
+    const separators = shapes.filter((s) => s.type === "line");
+    expect(separators).toHaveLength(1);
+  });
+
+  it("editing a bullet's text patches its shape's content in place without moving any shape", () => {
+    let { document, blockId } = headingBulletsBlock(createEmptyDocument());
+    const rowId = nodeId(document, blockId, 0);
+    document = sync.addOutlineChild(document, blockId, rowId);
+    const itemId = document.structuredBlocks[0].outline[0].children[0].id;
+
+    const before = document.structuredBlocks[0].generatedShapeIds.map((id) => ({ ...document.shapes[id] }));
+    document = sync.updateOutlineNodeText(document, blockId, itemId, "新しい項目テキスト");
+    const after = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+
+    expect(after.map((s) => ({ x: s.x, y: s.y, width: s.width, height: s.height }))).toEqual(
+      before.map((s) => ({ x: s.x, y: s.y, width: s.width, height: s.height })),
+    );
+    const editedShape = after.find((s) => s.templateNodeIds?.includes(itemId))!;
+    expect(editedShape.type === "text" && editedShape.content).toBe("新しい項目テキスト");
+  });
+});
+
 describe("pyramid incremental placement (reproducing the reported bug)", () => {
   it("places a child below its root (greater y, same-ish x) via addOutlineChild", () => {
     let { document, blockId } = pyramidBlock(createEmptyDocument());

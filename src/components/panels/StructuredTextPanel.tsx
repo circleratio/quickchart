@@ -13,6 +13,7 @@ const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
   logicTree: "ロジックツリー",
   matrix: "マトリクス",
   venn: "ベン図",
+  headingBullets: "見出し付き箇条書き",
 };
 
 // Matrix is fixed at 4 quadrants; Venn's root count follows params.setCount

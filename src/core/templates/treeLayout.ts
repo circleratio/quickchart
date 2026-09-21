@@ -14,8 +14,25 @@ export interface LayoutNode {
   // plain outline with no label (Venn's set circles - see venn.ts; a
   // matrix quadrant's background square - see matrix.ts); "label" generates
   // borderless text drawn on top of another shape rather than its own layer
-  // (Venn's set names, placed inside their circle - see venn.ts).
-  kind?: "text" | "ellipse" | "rect" | "label";
+  // (Venn's set names, placed inside their circle - see venn.ts; headingBullets'
+  // bullet items - see headingBullets.ts); "heading" generates a solid-filled,
+  // borderless text cell that is its own background (headingBullets' row
+  // heading); "line" generates a plain (typically dashed) line, not a labeled
+  // shape (headingBullets' row separators).
+  kind?: "text" | "ellipse" | "rect" | "label" | "heading" | "line";
+  // Horizontal text alignment for a text-bearing kind ("text"/"label"/
+  // "heading"); defaults to "center" when omitted (see regenerateBlockShapes
+  // in sync.ts). headingBullets' bullet items use "left", matching normal
+  // bulleted-list reading order.
+  align?: "left" | "center" | "right";
+  // Overrides the kind's own default font size (see regenerateBlockShapes in
+  // sync.ts) - e.g. Venn's set name wants a larger, title-like size than a
+  // regular "label".
+  fontSize?: number;
+  // Set on a "label" kind to render a "• " prefix ahead of the text without
+  // it being part of the shape's editable content (headingBullets' bullet
+  // items - see shape.ts's TextShape.bulletMarker for why).
+  bulletMarker?: boolean;
 }
 
 export interface TreeLayoutOptions {

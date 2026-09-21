@@ -104,13 +104,14 @@ function TextShapeRenderer({
 }) {
   // Plain text (placed via the text tool) is a borderless label, matching a
   // typical textbox. A shape generated from a structured template
-  // (pyramid/logicTree/matrix/venn) is usually its own "layer" of the
-  // diagram, so it needs a visible box - shown using the shape's own
+  // (pyramid/logicTree/matrix/venn/headingBullets) is usually its own "layer"
+  // of the diagram, so it needs a visible box - shown using the shape's own
   // fill/stroke rather than the transparent/selection-only style used for
   // free text. The exception is a template shape styled via labelStyle()
-  // (Venn's set name, drawn inside its own circle rather than as a separate
-  // layer): its fill/stroke are already "none", so this still renders
-  // borderless like free text, just visible when selected.
+  // (Venn's set name inside its own circle; headingBullets' bullet items over
+  // the content column) rather than its own layer: its fill/stroke are
+  // already "none", so this still renders borderless like free text, just
+  // visible when selected.
   const isTemplateNode = Boolean(shape.templateNodeIds?.length);
   const boxFill = isTemplateNode ? shape.style.fill : "transparent";
   const boxStroke = isTemplateNode ? stroke : selected ? stroke : "none";
@@ -135,9 +136,10 @@ function TextShapeRenderer({
         dominantBaseline="middle"
         fontFamily={shape.style.fontFamily}
         fontSize={shape.style.fontSize}
+        fontWeight={shape.style.fontWeight}
         fill={shape.style.textColor}
       >
-        {shape.content}
+        {shape.bulletMarker ? `• ${shape.content}` : shape.content}
       </text>
     </g>
   );

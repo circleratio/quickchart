@@ -5,6 +5,7 @@ export interface ShapeStyle {
   strokeDasharray?: string;
   fontFamily?: string;
   fontSize?: number;
+  fontWeight?: "normal" | "bold";
   textColor?: string;
 }
 
@@ -76,19 +77,46 @@ export function outlineStyle(themeId: string = DEFAULT_COLOR_THEME_ID): ShapeSty
 }
 
 // Borderless text, for a generated label drawn directly on top of another
-// shape rather than its own layer (Venn's set name, placed inside its own
-// circle - see venn.ts). No fill/stroke so the box is invisible unless
-// selected (ShapeRenderer swaps in the selection color/width then). Larger
-// than defaultShapeStyle's 16px since it reads as a set title, not a regular
-// item label.
-export function labelStyle(themeId: string = DEFAULT_COLOR_THEME_ID): ShapeStyle {
+// shape rather than its own layer (Venn's set name inside its own circle -
+// see venn.ts; headingBullets' bullet items over the content column - see
+// headingBullets.ts). No fill/stroke so the box is invisible unless selected
+// (ShapeRenderer swaps in the selection color/width then). `fontSize`
+// defaults to defaultShapeStyle's 16px (a regular item label); Venn's set
+// name passes a larger size since it reads as a title instead.
+export function labelStyle(themeId: string = DEFAULT_COLOR_THEME_ID, fontSize = 16): ShapeStyle {
   const theme = getColorTheme(themeId);
   return {
     fill: "none",
     stroke: "none",
     strokeWidth: 2,
     fontFamily: "Yu Gothic, Meiryo, sans-serif",
-    fontSize: 20,
+    fontSize,
     textColor: theme.primary[0],
   };
+}
+
+// Solid-filled, borderless text for a row heading that IS its own background
+// (headingBullets' left-hand heading cell - see headingBullets.ts) - unlike
+// defaultShapeStyle's light-fill-plus-border box, or matrix's separate
+// background/title shapes, this is one shape doing both jobs since the whole
+// cell is the heading (no separate "item area" to leave unfilled below it).
+export function headingStyle(themeId: string = DEFAULT_COLOR_THEME_ID, fontSize = 16): ShapeStyle {
+  const theme = getColorTheme(themeId);
+  return {
+    fill: theme.primary[0],
+    stroke: theme.primary[0],
+    strokeWidth: 2,
+    fontFamily: "Yu Gothic, Meiryo, sans-serif",
+    fontSize,
+    fontWeight: "bold",
+    textColor: theme.textLight,
+  };
+}
+
+// Dashed rule between headingBullets' rows (see headingBullets.ts). Uses the
+// theme's mid-tone shade rather than outlineStyle's dark primary[0] - a full
+// row divider reads better as a subtle rule than a structural border.
+export function separatorStyle(themeId: string = DEFAULT_COLOR_THEME_ID): ShapeStyle {
+  const theme = getColorTheme(themeId);
+  return { fill: "none", stroke: theme.primary[2], strokeWidth: 1, strokeDasharray: "4 3" };
 }

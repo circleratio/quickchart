@@ -2,12 +2,13 @@ import { v4 as uuidv4 } from "uuid";
 import type { Document, OutlineNode, StructuredBlock } from "../model/document";
 import { DEFAULT_LAYER_ID } from "../model/document";
 import type { Shape, ShapeId, TextShape } from "../model/shape";
-import { defaultShapeStyle, labelStyle, outlineStyle } from "../model/style";
+import { defaultShapeStyle, headingStyle, labelStyle, outlineStyle, separatorStyle } from "../model/style";
 import { layoutPyramid } from "./pyramid";
 import { layoutLogicTree } from "./logicTree";
 import { layoutMatrix, layoutMatrixAxisLabels } from "./matrix";
 import type { MatrixAxisParams } from "./matrix";
 import { layoutVenn, VENN_MAX_SETS, VENN_MIN_SETS } from "./venn";
+import { layoutHeadingBullets } from "./headingBullets";
 import type { LayoutNode } from "./treeLayout";
 
 // All functions here take a plain Document and return a new plain Document -
@@ -21,7 +22,7 @@ import type { LayoutNode } from "./treeLayout";
 // the pyramid/logicTree incremental add/delete path (see regenerateBlockShapes
 // below and doc/spec.md §6.2.1/§6.2.2).
 function isFullyRelayoutedPattern(pattern: StructuredBlock["pattern"]): boolean {
-  return pattern === "matrix" || pattern === "venn";
+  return pattern === "matrix" || pattern === "venn" || pattern === "headingBullets";
 }
 
 function vennSetCount(params: Record<string, unknown>): number {
@@ -50,6 +51,8 @@ function rawLayoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[
       return layoutMatrix(outline);
     case "venn":
       return layoutVenn(outline, vennSetCount(params));
+    case "headingBullets":
+      return layoutHeadingBullets(outline);
     default:
       return [];
   }
@@ -546,14 +549,32 @@ function regenerateBlockShapes(doc: Document, block: StructuredBlock, newOutline
       zIndex: zIndex++,
       templateNodeIds: layoutNode.nodeIds,
     };
+    const align = layoutNode.align ?? "center";
     const shape: Shape =
       layoutNode.kind === "ellipse"
         ? { ...base, type: "ellipse", style: outlineStyle(doc.colorThemeId) }
         : layoutNode.kind === "rect"
           ? { ...base, type: "rect", style: outlineStyle(doc.colorThemeId) }
-          : layoutNode.kind === "label"
-            ? { ...base, type: "text", style: labelStyle(doc.colorThemeId), content: layoutNode.text, align: "center" }
-            : { ...base, type: "text", style: defaultShapeStyle(doc.colorThemeId), content: layoutNode.text, align: "center" };
+          : layoutNode.kind === "line"
+            ? { ...base, type: "line", style: separatorStyle(doc.colorThemeId) }
+            : layoutNode.kind === "label"
+              ? {
+                  ...base,
+                  type: "text",
+                  style: labelStyle(doc.colorThemeId, layoutNode.fontSize),
+                  content: layoutNode.text,
+                  align,
+                  bulletMarker: layoutNode.bulletMarker,
+                }
+              : layoutNode.kind === "heading"
+                ? {
+                    ...base,
+                    type: "text",
+                    style: headingStyle(doc.colorThemeId, layoutNode.fontSize),
+                    content: layoutNode.text,
+                    align,
+                  }
+                : { ...base, type: "text", style: defaultShapeStyle(doc.colorThemeId), content: layoutNode.text, align };
     shapes[shape.id] = shape;
     newShapeIds.push(shape.id);
   }

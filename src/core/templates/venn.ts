@@ -6,10 +6,13 @@ const CIRCLE_RADIUS_3 = 130;
 const ITEM_WIDTH = 110;
 const ITEM_HEIGHT = 28;
 const ITEM_GAP = 4;
-// Wider/taller than an item box since the set label uses a larger font
-// (labelStyle() in style.ts).
+// Wider/taller than an item box since the set label uses a larger font (see
+// LABEL_FONT_SIZE below).
 const LABEL_WIDTH = 130;
 const LABEL_HEIGHT = 36;
+// Larger than labelStyle()'s own default (a regular item label's 16px) since
+// the set name reads as a title, not a regular item.
+const LABEL_FONT_SIZE = 20;
 // How far a set's label sits from its circle's center, as a fraction of the
 // radius, in the outward direction (see the label placement loop below) -
 // close to the center so the label reads as "inside this circle" rather than
@@ -130,6 +133,7 @@ export function layoutVenn(outline: OutlineNode[], setCount: number): LayoutNode
       width: LABEL_WIDTH,
       height: LABEL_HEIGHT,
       kind: "label",
+      fontSize: LABEL_FONT_SIZE,
     });
   });
 

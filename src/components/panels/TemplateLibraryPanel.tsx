@@ -11,6 +11,7 @@ const PATTERNS: { id: StructuredBlock["pattern"]; label: string; available: bool
   { id: "logicTree", label: "ロジックツリー", available: true },
   { id: "matrix", label: "マトリクス", available: true },
   { id: "venn", label: "ベン図", available: true },
+  { id: "headingBullets", label: "見出し付き箇条書き", available: true },
 ];
 
 interface TemplateLibraryPanelProps {
