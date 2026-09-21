@@ -1,4 +1,5 @@
 import type { OutlineNode } from "../model/document";
+import type { ThemeColorSlot } from "../model/style";
 
 export interface LayoutNode {
   // Usually one outline node id; more than one when several nodes share a
@@ -11,28 +12,45 @@ export interface LayoutNode {
   width: number;
   height: number;
   // "text" (default) generates a labeled box; "ellipse"/"rect" generate a
-  // plain outline with no label (Venn's set circles - see venn.ts; a
-  // matrix quadrant's background square - see matrix.ts); "label" generates
+  // plain outline with no label (Venn's set circles - see venn.ts; a matrix
+  // quadrant's background square - see matrix.ts); "label" generates
   // borderless text drawn on top of another shape rather than its own layer
-  // (Venn's set names, placed inside their circle - see venn.ts; headingBullets'
-  // bullet items - see headingBullets.ts); "heading" generates a solid-filled,
+  // (Venn's set names; headingBullets' bullet items; bulletMatrix's title/
+  // detail lines within a cell); "heading" generates a solid-filled,
   // borderless text cell that is its own background (headingBullets' row
-  // heading); "line" generates a plain (typically dashed) line, not a labeled
-  // shape (headingBullets' row separators).
+  // heading; bulletMatrix's row/column headers); "line" generates a plain
+  // (typically dashed) line, not a labeled shape (headingBullets' row
+  // separators; bulletMatrix's row/column grid lines).
   kind?: "text" | "ellipse" | "rect" | "label" | "heading" | "line";
   // Horizontal text alignment for a text-bearing kind ("text"/"label"/
   // "heading"); defaults to "center" when omitted (see regenerateBlockShapes
-  // in sync.ts). headingBullets' bullet items use "left", matching normal
-  // bulleted-list reading order.
+  // in sync.ts). headingBullets'/bulletMatrix's bullet items use "left",
+  // matching normal bulleted-list reading order.
   align?: "left" | "center" | "right";
   // Overrides the kind's own default font size (see regenerateBlockShapes in
   // sync.ts) - e.g. Venn's set name wants a larger, title-like size than a
   // regular "label".
   fontSize?: number;
-  // Set on a "label" kind to render a "• " prefix ahead of the text without
-  // it being part of the shape's editable content (headingBullets' bullet
-  // items - see shape.ts's TextShape.bulletMarker for why).
-  bulletMarker?: boolean;
+  // The below three override individual aspects of the kind's own default
+  // style (see styleFor in sync.ts) - e.g. bulletMatrix's title line wants
+  // "label"'s usual borderless text, just bolder and underlined.
+  fontWeight?: "normal" | "bold";
+  italic?: boolean;
+  underline?: boolean;
+  // Overrides the kind's own default text color with theme.primary[slot] (or
+  // theme.accent) - e.g. bulletMatrix's detail line wants a lighter shade
+  // than its title line, for visual hierarchy within a cell.
+  textColorSlot?: ThemeColorSlot;
+  // For a "heading" kind: which theme color to fill the cell with (see
+  // headingStyle in style.ts). Defaults to primary[0] (headingBullets' navy);
+  // bulletMatrix's row/column headers pass a different slot so all three
+  // kinds of heading (this pattern's two, plus headingBullets') read as
+  // visually distinct roles.
+  fillColorSlot?: ThemeColorSlot;
+  // Set on a "label" kind to render this literal prefix (e.g. "• ", "- ")
+  // ahead of the text without it being part of the shape's editable content
+  // (see shape.ts's TextShape.bulletMarker for why).
+  bulletMarker?: string;
 }
 
 export interface TreeLayoutOptions {

@@ -104,15 +104,24 @@ function TextShapeRenderer({
 }) {
   // Plain text (placed via the text tool) is a borderless label, matching a
   // typical textbox. A shape generated from a structured template
-  // (pyramid/logicTree/matrix/venn/headingBullets) is usually its own "layer"
-  // of the diagram, so it needs a visible box - shown using the shape's own
-  // fill/stroke rather than the transparent/selection-only style used for
-  // free text. The exception is a template shape styled via labelStyle()
-  // (Venn's set name inside its own circle; headingBullets' bullet items over
-  // the content column) rather than its own layer: its fill/stroke are
-  // already "none", so this still renders borderless like free text, just
-  // visible when selected.
-  const isTemplateNode = Boolean(shape.templateNodeIds?.length);
+  // (pyramid/logicTree/matrix/venn/headingBullets/bulletMatrix) is usually
+  // its own "layer" of the diagram, so it needs a visible box - shown using
+  // the shape's own fill/stroke rather than the transparent/selection-only
+  // style used for free text. The exception is a template shape styled via
+  // labelStyle() (Venn's set name inside its own circle; headingBullets'
+  // bullet items; bulletMatrix's title/detail lines within a cell) rather
+  // than its own layer: its fill/stroke are already "none", so this still
+  // renders borderless like free text, just visible when selected.
+  //
+  // "Generated from a template" is `templateNodeIds !== undefined` - NOT
+  // `.length > 0`. A template shape isn't always tied to a specific outline
+  // node: bulletMatrix's column headers (params.columnHeaders, not the
+  // outline - see bulletMatrix.ts) still get `templateNodeIds: []` from
+  // regenerateBlockShapes (sync.ts), same as every other template shape,
+  // just with zero ids in it. Treating that the same as "no template" (as a
+  // `.length` check would) made them render transparent instead of their
+  // intended solid fill - invisible against the canvas.
+  const isTemplateNode = shape.templateNodeIds !== undefined;
   const boxFill = isTemplateNode ? shape.style.fill : "transparent";
   const boxStroke = isTemplateNode ? stroke : selected ? stroke : "none";
   const boxDasharray = isTemplateNode ? shape.style.strokeDasharray : "4 2";
@@ -137,9 +146,11 @@ function TextShapeRenderer({
         fontFamily={shape.style.fontFamily}
         fontSize={shape.style.fontSize}
         fontWeight={shape.style.fontWeight}
+        fontStyle={shape.style.fontStyle}
+        textDecoration={shape.style.textDecoration}
         fill={shape.style.textColor}
       >
-        {shape.bulletMarker ? `• ${shape.content}` : shape.content}
+        {shape.bulletMarker ? `${shape.bulletMarker}${shape.content}` : shape.content}
       </text>
     </g>
   );

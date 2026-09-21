@@ -133,6 +133,8 @@ interface DocumentState {
   replaceOutline: (blockId: string, newOutline: StructuredBlock["outline"]) => void;
   updateMatrixAxisLabels: (blockId: string, axisParams: MatrixAxisParams) => void;
   updateVennSetCount: (blockId: string, setCount: number) => void;
+  updateBulletMatrixColumns: (blockId: string, columnHeaders: string[]) => void;
+  replaceBulletMatrix: (blockId: string, columnHeaders: string[], newOutline: StructuredBlock["outline"]) => void;
 
   // User templates (doc/spec.md §6.4): placing one adds plain shapes (no
   // structured-template linkage) - registering one is pure read + an IPC
@@ -402,6 +404,20 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
 
     updateVennSetCount: (blockId, setCount) => {
       const next = sync.updateVennSetCount(get().document, blockId, setCount);
+      change((draft) => {
+        Object.assign(draft, next);
+      });
+    },
+
+    updateBulletMatrixColumns: (blockId, columnHeaders) => {
+      const next = sync.updateBulletMatrixColumns(get().document, blockId, columnHeaders);
+      change((draft) => {
+        Object.assign(draft, next);
+      });
+    },
+
+    replaceBulletMatrix: (blockId, columnHeaders, newOutline) => {
+      const next = sync.replaceBulletMatrix(get().document, blockId, columnHeaders, newOutline);
       change((draft) => {
         Object.assign(draft, next);
       });

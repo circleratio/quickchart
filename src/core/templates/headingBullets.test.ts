@@ -31,7 +31,7 @@ describe("layoutHeadingBullets", () => {
     expect(heading.x).toBe(0);
     expect(bullet.x).toBeGreaterThan(heading.x + heading.width);
     expect(bullet.align).toBe("left");
-    expect(bullet.bulletMarker).toBe(true);
+    expect(bullet.bulletMarker).toBe("• ");
   });
 
   it("stacks a row's bullets vertically without overlapping", () => {

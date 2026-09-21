@@ -12,6 +12,7 @@ const PATTERNS: { id: StructuredBlock["pattern"]; label: string; available: bool
   { id: "matrix", label: "マトリクス", available: true },
   { id: "venn", label: "ベン図", available: true },
   { id: "headingBullets", label: "見出し付き箇条書き", available: true },
+  { id: "bulletMatrix", label: "箇条書きマトリクス", available: true },
 ];
 
 interface TemplateLibraryPanelProps {

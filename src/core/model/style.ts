@@ -6,6 +6,8 @@ export interface ShapeStyle {
   fontFamily?: string;
   fontSize?: number;
   fontWeight?: "normal" | "bold";
+  fontStyle?: "normal" | "italic";
+  textDecoration?: "none" | "underline";
   textColor?: string;
 }
 
@@ -54,6 +56,16 @@ export function getColorTheme(id: string): ColorTheme {
   return COLOR_THEMES.find((theme) => theme.id === id) ?? COLOR_THEMES[0];
 }
 
+// Index into a ColorTheme's `primary` shade scale (0 = darkest), or the
+// theme's single `accent` color - lets a LayoutNode pick a theme color by
+// reference (see treeLayout.ts's fillColorSlot/textColorSlot) instead of a
+// pattern embedding a literal hex, which would break theme switching.
+export type ThemeColorSlot = 0 | 1 | 2 | 3 | 4 | "accent";
+
+export function resolveColorSlot(theme: ColorTheme, slot: ThemeColorSlot): string {
+  return slot === "accent" ? theme.accent : theme.primary[slot];
+}
+
 export function defaultShapeStyle(themeId: string = DEFAULT_COLOR_THEME_ID): ShapeStyle {
   const theme = getColorTheme(themeId);
   return {
@@ -95,16 +107,24 @@ export function labelStyle(themeId: string = DEFAULT_COLOR_THEME_ID, fontSize = 
   };
 }
 
-// Solid-filled, borderless text for a row heading that IS its own background
-// (headingBullets' left-hand heading cell - see headingBullets.ts) - unlike
-// defaultShapeStyle's light-fill-plus-border box, or matrix's separate
-// background/title shapes, this is one shape doing both jobs since the whole
-// cell is the heading (no separate "item area" to leave unfilled below it).
-export function headingStyle(themeId: string = DEFAULT_COLOR_THEME_ID, fontSize = 16): ShapeStyle {
+// Solid-filled, borderless text for a heading cell that IS its own background
+// (headingBullets' left-hand heading cell; bulletMatrix's row/column headers -
+// see headingBullets.ts/bulletMatrix.ts) - unlike defaultShapeStyle's
+// light-fill-plus-border box, or matrix's separate background/title shapes,
+// this is one shape doing both jobs since the whole cell is the heading (no
+// separate "item area" to leave unfilled below it). `fill` defaults to
+// primary[0] (headingBullets' navy); bulletMatrix's row/column headers pass a
+// different slot to tell them apart from each other and from a regular cell.
+export function headingStyle(
+  themeId: string = DEFAULT_COLOR_THEME_ID,
+  fontSize = 16,
+  fillColorSlot: ThemeColorSlot = 0,
+): ShapeStyle {
   const theme = getColorTheme(themeId);
+  const fill = resolveColorSlot(theme, fillColorSlot);
   return {
-    fill: theme.primary[0],
-    stroke: theme.primary[0],
+    fill,
+    stroke: fill,
     strokeWidth: 2,
     fontFamily: "Yu Gothic, Meiryo, sans-serif",
     fontSize,

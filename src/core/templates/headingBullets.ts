@@ -61,7 +61,7 @@ export function layoutHeadingBullets(outline: OutlineNode[]): LayoutNode[] {
         height: ITEM_HEIGHT,
         kind: "label",
         align: "left",
-        bulletMarker: true,
+        bulletMarker: "• ",
       });
     });
 

@@ -19,7 +19,7 @@ export interface OutlineNode {
 
 export interface StructuredBlock {
   id: string;
-  pattern: "pyramid" | "logicTree" | "matrix" | "venn" | "headingBullets";
+  pattern: "pyramid" | "logicTree" | "matrix" | "venn" | "headingBullets" | "bulletMatrix";
   outline: OutlineNode[];
   params: Record<string, unknown>;
   generatedShapeIds: ShapeId[];

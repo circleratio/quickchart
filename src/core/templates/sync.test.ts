@@ -451,6 +451,102 @@ describe("headingBullets blocks (fully-relayouted pattern)", () => {
   });
 });
 
+describe("bulletMatrix blocks (fully-relayouted pattern)", () => {
+  function bulletMatrixBlock(doc: Document, columnHeaders: string[]) {
+    const { document, blockId } = sync.addEmptyStructuredBlock(doc, "bulletMatrix");
+    const withColumns = sync.updateBulletMatrixColumns(document, blockId, columnHeaders);
+    return { document: sync.addFirstOutlineNode(withColumns, blockId), blockId };
+  }
+
+  it("fills a newly-added row with one empty cell per configured column", () => {
+    const { document, blockId } = bulletMatrixBlock(createEmptyDocument(), ["企業", "産業"]);
+    const block = document.structuredBlocks.find((b) => b.id === blockId)!;
+    expect(block.outline[0].children).toHaveLength(2);
+    expect(block.outline[0].children.every((c) => c.children.length === 0)).toBe(true);
+  });
+
+  it("fills a 2nd row (added at root level) with cells too, not just the first", () => {
+    let { document, blockId } = bulletMatrixBlock(createEmptyDocument(), ["企業", "産業"]);
+    const row1Id = nodeId(document, blockId, 0);
+    document = sync.addOutlineSibling(document, blockId, row1Id);
+    const block = document.structuredBlocks[0];
+    expect(block.outline[1].children).toHaveLength(2);
+  });
+
+  it("adding a child to a cell adds a title under it, not another cell", () => {
+    let { document, blockId } = bulletMatrixBlock(createEmptyDocument(), ["企業"]);
+    const cellId = document.structuredBlocks[0].outline[0].children[0].id;
+    document = sync.addOutlineChild(document, blockId, cellId);
+    const cell = document.structuredBlocks[0].outline[0].children[0];
+    expect(cell.children).toHaveLength(1);
+  });
+
+  it("growing columns keeps existing cells' content, padding new columns with empty cells", () => {
+    let { document, blockId } = bulletMatrixBlock(createEmptyDocument(), ["企業"]);
+    const cellId = document.structuredBlocks[0].outline[0].children[0].id;
+    document = sync.addOutlineChild(document, blockId, cellId); // a title in column 0
+    const titleId = document.structuredBlocks[0].outline[0].children[0].children[0].id;
+
+    document = sync.updateBulletMatrixColumns(document, blockId, ["企業", "産業"]);
+    const row = document.structuredBlocks[0].outline[0];
+    expect(row.children).toHaveLength(2);
+    expect(row.children[0].children[0].id).toBe(titleId); // column 0's content survived
+    expect(row.children[1].children).toHaveLength(0); // new column starts empty
+  });
+
+  it("shrinking columns discards the dropped column's shapes", () => {
+    let { document, blockId } = bulletMatrixBlock(createEmptyDocument(), ["企業", "産業"]);
+    const col1CellId = document.structuredBlocks[0].outline[0].children[1].id;
+    document = sync.addOutlineChild(document, blockId, col1CellId);
+    const titleId = document.structuredBlocks[0].outline[0].children[1].children[0].id;
+    expect(Object.values(document.shapes).some((s) => s.templateNodeIds?.includes(titleId))).toBe(true);
+
+    document = sync.updateBulletMatrixColumns(document, blockId, ["企業"]);
+    expect(document.structuredBlocks[0].outline[0].children).toHaveLength(1);
+    expect(Object.values(document.shapes).some((s) => s.templateNodeIds?.includes(titleId))).toBe(false);
+  });
+
+  it("replaceBulletMatrix sets columns and outline together, generating correctly-styled row/column headers and title/detail shapes", () => {
+    const cell: Document["structuredBlocks"][0]["outline"][0] = {
+      id: "cell-a1",
+      text: "",
+      children: [{ id: "title-1", text: "見出し", children: [{ id: "detail-1", text: "詳細", children: [] }] }],
+    };
+    const outline = [{ id: "row-1", text: "行1", children: [cell] }];
+
+    const { document: base, blockId } = sync.addEmptyStructuredBlock(createEmptyDocument(), "bulletMatrix");
+    const document = sync.replaceBulletMatrix(base, blockId, ["列1"], outline);
+
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    const rowHeader = shapes.find((s) => s.templateNodeIds?.includes("row-1"))!;
+    const columnHeader = shapes.find((s) => s.type === "text" && s.content === "列1")!;
+    const title = shapes.find((s) => s.templateNodeIds?.includes("title-1"))!;
+    const detail = shapes.find((s) => s.templateNodeIds?.includes("detail-1"))!;
+
+    expect(rowHeader.style.fill).not.toBe(columnHeader.style.fill); // visually distinct roles
+    expect(title.type === "text" && title.bulletMarker).toBe("• ");
+    expect(title.style.fontWeight).toBe("bold");
+    expect(title.style.textDecoration).toBe("underline");
+    expect(detail.type === "text" && detail.bulletMarker).toBe("- ");
+    expect(detail.style.fontWeight).not.toBe("bold");
+  });
+
+  it("editing a title's text patches its shape's content in place without moving any shape", () => {
+    let { document, blockId } = bulletMatrixBlock(createEmptyDocument(), ["企業"]);
+    const cellId = document.structuredBlocks[0].outline[0].children[0].id;
+    document = sync.addOutlineChild(document, blockId, cellId);
+    const titleId = document.structuredBlocks[0].outline[0].children[0].children[0].id;
+
+    const before = document.structuredBlocks[0].generatedShapeIds.map((id) => ({ ...document.shapes[id] }));
+    document = sync.updateOutlineNodeText(document, blockId, titleId, "新しいタイトル");
+    const after = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+
+    expect(after.map((s) => ({ x: s.x, y: s.y }))).toEqual(before.map((s) => ({ x: s.x, y: s.y })));
+    const edited = after.find((s) => s.templateNodeIds?.includes(titleId))!;
+    expect(edited.type === "text" && edited.content).toBe("新しいタイトル");
+  });
+});
+
 describe("pyramid incremental placement (reproducing the reported bug)", () => {
   it("places a child below its root (greater y, same-ish x) via addOutlineChild", () => {
     let { document, blockId } = pyramidBlock(createEmptyDocument());

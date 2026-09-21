@@ -56,11 +56,13 @@ export interface TextShape extends ShapeBase {
   type: "text";
   content: string;
   align: "left" | "center" | "right";
-  // Renders a "• " prefix ahead of `content` without it being part of the
-  // editable text itself (headingBullets' bullet items - see
-  // templates/headingBullets.ts). Kept separate from `content` so the inline
-  // text-edit overlay (Canvas.tsx) shows/saves the raw text only.
-  bulletMarker?: boolean;
+  // Renders this literal prefix (e.g. "• ", "- ") ahead of `content` without
+  // it being part of the editable text itself (headingBullets' bullet items;
+  // bulletMatrix's title/detail lines, which use different markers for each -
+  // see templates/headingBullets.ts and templates/bulletMatrix.ts). Kept
+  // separate from `content` so the inline text-edit overlay (Canvas.tsx)
+  // shows/saves the raw text only.
+  bulletMarker?: string;
 }
 
 export type Shape = RectShape | EllipseShape | LineShape | ConnectorShape | TextShape;

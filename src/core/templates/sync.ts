@@ -2,13 +2,15 @@ import { v4 as uuidv4 } from "uuid";
 import type { Document, OutlineNode, StructuredBlock } from "../model/document";
 import { DEFAULT_LAYER_ID } from "../model/document";
 import type { Shape, ShapeId, TextShape } from "../model/shape";
-import { defaultShapeStyle, headingStyle, labelStyle, outlineStyle, separatorStyle } from "../model/style";
+import { defaultShapeStyle, getColorTheme, headingStyle, labelStyle, outlineStyle, resolveColorSlot, separatorStyle } from "../model/style";
+import type { ShapeStyle } from "../model/style";
 import { layoutPyramid } from "./pyramid";
 import { layoutLogicTree } from "./logicTree";
 import { layoutMatrix, layoutMatrixAxisLabels } from "./matrix";
 import type { MatrixAxisParams } from "./matrix";
 import { layoutVenn, VENN_MAX_SETS, VENN_MIN_SETS } from "./venn";
 import { layoutHeadingBullets } from "./headingBullets";
+import { layoutBulletMatrix } from "./bulletMatrix";
 import type { LayoutNode } from "./treeLayout";
 
 // All functions here take a plain Document and return a new plain Document -
@@ -22,7 +24,7 @@ import type { LayoutNode } from "./treeLayout";
 // the pyramid/logicTree incremental add/delete path (see regenerateBlockShapes
 // below and doc/spec.md §6.2.1/§6.2.2).
 function isFullyRelayoutedPattern(pattern: StructuredBlock["pattern"]): boolean {
-  return pattern === "matrix" || pattern === "venn" || pattern === "headingBullets";
+  return pattern === "matrix" || pattern === "venn" || pattern === "headingBullets" || pattern === "bulletMatrix";
 }
 
 function vennSetCount(params: Record<string, unknown>): number {
@@ -31,14 +33,22 @@ function vennSetCount(params: Record<string, unknown>): number {
   return Math.max(VENN_MIN_SETS, Math.min(VENN_MAX_SETS, n));
 }
 
+// bulletMatrix's column headers live in params, not the outline text itself
+// (doc/spec.md §6.2.4, same reasoning as matrix.ts's axis labels).
+function bulletMatrixColumnHeaders(params: Record<string, unknown>): string[] {
+  const raw = params.columnHeaders;
+  return Array.isArray(raw) ? raw.filter((h): h is string => typeof h === "string") : [];
+}
+
 function layoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[], params: Record<string, unknown> = {}): LayoutNode[] {
   const nodes = rawLayoutFor(pattern, outline, params);
-  // Only venn.ts's circle-centered layout can produce negative coordinates
-  // (see normalizeToOrigin below); matrix.ts reserves its own fixed,
+  // venn.ts's circle-centered layout, and bulletMatrix's column headers
+  // (placed above row 0), can both produce negative coordinates (see
+  // normalizeToOrigin below); matrix.ts reserves its own fixed,
   // always-non-negative margin for axis labels (AXIS_MARGIN_X/Y) that must
   // stay intact, and pyramid/logicTree's cursor-based placement already
   // starts at (0, 0), so normalizing them here would be a no-op at best.
-  return pattern === "venn" ? normalizeToOrigin(nodes) : nodes;
+  return pattern === "venn" || pattern === "bulletMatrix" ? normalizeToOrigin(nodes) : nodes;
 }
 
 function rawLayoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[], params: Record<string, unknown>): LayoutNode[] {
@@ -53,6 +63,8 @@ function rawLayoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[
       return layoutVenn(outline, vennSetCount(params));
     case "headingBullets":
       return layoutHeadingBullets(outline);
+    case "bulletMatrix":
+      return layoutBulletMatrix(outline, bulletMatrixColumnHeaders(params));
     default:
       return [];
   }
@@ -71,6 +83,33 @@ function normalizeToOrigin(nodes: LayoutNode[]): LayoutNode[] {
   const minY = Math.min(...nodes.map((n) => n.y));
   if (minX === 0 && minY === 0) return nodes;
   return nodes.map((n) => ({ ...n, x: n.x - minX, y: n.y - minY }));
+}
+
+// Resolves a LayoutNode's full ShapeStyle: a base style from its `kind`
+// (falling back to defaultShapeStyle's bordered box for "text"/undefined),
+// with fontWeight/italic/underline/textColorSlot layered on top where set -
+// decorations a kind's own style function doesn't hardcode, so a pattern can
+// reuse a kind (e.g. "label") with a different look per LayoutNode instead of
+// every decoration combination needing its own kind (see treeLayout.ts).
+function styleFor(themeId: string, layoutNode: LayoutNode): ShapeStyle {
+  const theme = getColorTheme(themeId);
+  const base: ShapeStyle =
+    layoutNode.kind === "ellipse" || layoutNode.kind === "rect"
+      ? outlineStyle(themeId)
+      : layoutNode.kind === "line"
+        ? separatorStyle(themeId)
+        : layoutNode.kind === "label"
+          ? labelStyle(themeId, layoutNode.fontSize)
+          : layoutNode.kind === "heading"
+            ? headingStyle(themeId, layoutNode.fontSize, layoutNode.fillColorSlot)
+            : defaultShapeStyle(themeId);
+  return {
+    ...base,
+    ...(layoutNode.fontWeight ? { fontWeight: layoutNode.fontWeight } : {}),
+    ...(layoutNode.italic ? { fontStyle: "italic" as const } : {}),
+    ...(layoutNode.underline ? { textDecoration: "underline" as const } : {}),
+    ...(layoutNode.textColorSlot !== undefined ? { textColor: resolveColorSlot(theme, layoutNode.textColorSlot) } : {}),
+  };
 }
 
 function findBlock(doc: Document, blockId: string): StructuredBlock | undefined {
@@ -197,10 +236,29 @@ export function addEmptyStructuredBlock(doc: Document, pattern: StructuredBlock[
   return { document: { ...doc, structuredBlocks: [...doc.structuredBlocks, block] }, blockId: block.id };
 }
 
+// A bulletMatrix row (root outline node) needs one empty cell per
+// params.columnHeaders up front - otherwise a freshly-added row would render
+// with a heading and zero cells, and the generic outline editor has no way to
+// know it should add exactly columnHeaders.length children to fill them in.
+// Only used for a ROOT-level add (see addFirstOutlineNode/addOutlineSibling
+// below); a cell/title/detail added via addOutlineChild needs no such
+// prefill, since those levels don't have a fixed expected child count.
+function emptyBulletMatrixRow(block: StructuredBlock): OutlineNode {
+  return {
+    id: uuidv4(),
+    text: "",
+    children: bulletMatrixColumnHeaders(block.params).map(() => ({ id: uuidv4(), text: "", children: [] })),
+  };
+}
+
+function newRootNode(block: StructuredBlock): OutlineNode {
+  return block.pattern === "bulletMatrix" ? emptyBulletMatrixRow(block) : { id: uuidv4(), text: "", children: [] };
+}
+
 export function addFirstOutlineNode(doc: Document, blockId: string): Document {
   const block = findBlock(doc, blockId);
   if (!block || block.outline.length > 0) return doc;
-  const newNode: OutlineNode = { id: uuidv4(), text: "", children: [] };
+  const newNode: OutlineNode = newRootNode(block);
 
   if (isFullyRelayoutedPattern(block.pattern)) {
     return regenerateBlockShapes(doc, block, [newNode]);
@@ -240,7 +298,7 @@ export function addOutlineSibling(doc: Document, blockId: string, afterNodeId: s
   const loc = getSiblingsAndIndex(block.outline, afterNodeId);
   if (!loc) return doc;
 
-  const newNode: OutlineNode = { id: uuidv4(), text: "", children: [] };
+  const newNode: OutlineNode = loc.parentId === null ? newRootNode(block) : { id: uuidv4(), text: "", children: [] };
   const newOutline = updateChildren(block.outline, loc.parentId, (children) => [
     ...children.slice(0, loc.index + 1),
     newNode,
@@ -427,6 +485,36 @@ export function updateVennSetCount(doc: Document, blockId: string, setCount: num
   return regenerateBlockShapes(doc, updatedBlock, newOutline);
 }
 
+// Changes bulletMatrix's column count/labels (doc/spec.md §6.2.4). Every
+// row's cells are resized to match by position: a surviving column index
+// keeps its existing cell (and everything under it - titles/details), a new
+// column index gets a fresh empty cell, and a dropped column's cell (and its
+// subtree) is discarded. Column headers have no outline node of their own
+// (bulletMatrixColumnHeaders in this file), so this is the only path that
+// changes them - unlike a row/cell/title/detail edit, which goes through the
+// normal outline operations below.
+export function updateBulletMatrixColumns(doc: Document, blockId: string, columnHeaders: string[]): Document {
+  const block = findBlock(doc, blockId);
+  if (!block || block.pattern !== "bulletMatrix") return doc;
+  const newOutline = block.outline.map((row) => ({
+    ...row,
+    children: columnHeaders.map((_, i) => row.children[i] ?? { id: uuidv4(), text: "", children: [] }),
+  }));
+  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, columnHeaders } };
+  return regenerateBlockShapes(doc, updatedBlock, newOutline);
+}
+
+// Bulk replace from a parsed Markdown document (doc/spec.md §6.2.4): unlike
+// replaceOutline, bulletMatrix's column headers and outline must be set
+// together in one regeneration, since layoutBulletMatrix (bulletMatrix.ts)
+// needs both to position anything (see bulletMatrixColumnHeaders above).
+export function replaceBulletMatrix(doc: Document, blockId: string, columnHeaders: string[], newOutline: OutlineNode[]): Document {
+  const block = findBlock(doc, blockId);
+  if (!block || block.pattern !== "bulletMatrix") return doc;
+  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, columnHeaders } };
+  return regenerateBlockShapes(doc, updatedBlock, newOutline);
+}
+
 // Matrix axis labels (params._axisShapeIds) sit outside the grid, deliberately
 // at negative offsets from it (layoutMatrixAxisLabels), and are excluded here
 // so they can never pull the computed origin - and so every later
@@ -549,32 +637,22 @@ function regenerateBlockShapes(doc: Document, block: StructuredBlock, newOutline
       zIndex: zIndex++,
       templateNodeIds: layoutNode.nodeIds,
     };
-    const align = layoutNode.align ?? "center";
+    const style = styleFor(doc.colorThemeId, layoutNode);
     const shape: Shape =
       layoutNode.kind === "ellipse"
-        ? { ...base, type: "ellipse", style: outlineStyle(doc.colorThemeId) }
+        ? { ...base, type: "ellipse", style }
         : layoutNode.kind === "rect"
-          ? { ...base, type: "rect", style: outlineStyle(doc.colorThemeId) }
+          ? { ...base, type: "rect", style }
           : layoutNode.kind === "line"
-            ? { ...base, type: "line", style: separatorStyle(doc.colorThemeId) }
-            : layoutNode.kind === "label"
-              ? {
-                  ...base,
-                  type: "text",
-                  style: labelStyle(doc.colorThemeId, layoutNode.fontSize),
-                  content: layoutNode.text,
-                  align,
-                  bulletMarker: layoutNode.bulletMarker,
-                }
-              : layoutNode.kind === "heading"
-                ? {
-                    ...base,
-                    type: "text",
-                    style: headingStyle(doc.colorThemeId, layoutNode.fontSize),
-                    content: layoutNode.text,
-                    align,
-                  }
-                : { ...base, type: "text", style: defaultShapeStyle(doc.colorThemeId), content: layoutNode.text, align };
+            ? { ...base, type: "line", style }
+            : {
+                ...base,
+                type: "text",
+                style,
+                content: layoutNode.text,
+                align: layoutNode.align ?? "center",
+                bulletMarker: layoutNode.bulletMarker,
+              };
     shapes[shape.id] = shape;
     newShapeIds.push(shape.id);
   }
