@@ -4,11 +4,16 @@ import type { LayoutNode } from "./treeLayout";
 const HEADING_WIDTH = 220;
 const CONTENT_WIDTH = 700;
 const ITEM_HEIGHT = 28;
-const ITEM_GAP = 12;
+const ITEM_GAP = 4;
 const ROW_PADDING_Y = 18;
 const ROW_MIN_HEIGHT = 64;
 const BULLET_INDENT = 24;
 const CONTENT_RIGHT_PADDING = 20;
+// Trimmed off the bottom of each heading cell so adjacent rows' heading
+// blocks don't visually fuse into one solid band - a sliver of the canvas
+// background shows through between them instead, making each row's block
+// boundary readable even though every heading uses the same fill color.
+const HEADING_GAP = 4;
 
 export const HEADING_BULLETS_TABLE_WIDTH = HEADING_WIDTH + CONTENT_WIDTH;
 
@@ -41,7 +46,7 @@ export function layoutHeadingBullets(outline: OutlineNode[]): LayoutNode[] {
       x: 0,
       y,
       width: HEADING_WIDTH,
-      height: rowHeight,
+      height: rowHeight - HEADING_GAP,
       kind: "heading",
     });
 

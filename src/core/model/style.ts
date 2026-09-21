@@ -25,7 +25,7 @@ export const COLOR_THEMES: ColorTheme[] = [
   {
     id: "neutral-blue",
     name: "Neutral Blue",
-    primary: ["#1f3a5f", "#3b5a80", "#7c93ab", "#c3cdd8", "#eef2f7"],
+    primary: ["#095a79", "#2e738d", "#74a2b3", "#bfd4dc", "#eff4f6"],
     accent: "#d98c3f",
     textDark: "#1f2933",
     textLight: "#ffffff",
@@ -115,8 +115,10 @@ export function headingStyle(themeId: string = DEFAULT_COLOR_THEME_ID, fontSize 
 
 // Dashed rule between headingBullets' rows (see headingBullets.ts). Uses the
 // theme's mid-tone shade rather than outlineStyle's dark primary[0] - a full
-// row divider reads better as a subtle rule than a structural border.
+// row divider reads better as a subtle rule than a structural border. Wider
+// than ShapeRenderer's own 2px floor for an unstyled line, so it reads as a
+// deliberate rule rather than a hairline.
 export function separatorStyle(themeId: string = DEFAULT_COLOR_THEME_ID): ShapeStyle {
   const theme = getColorTheme(themeId);
-  return { fill: "none", stroke: theme.primary[2], strokeWidth: 1, strokeDasharray: "4 3" };
+  return { fill: "none", stroke: theme.primary[2], strokeWidth: 3, strokeDasharray: "4 3" };
 }

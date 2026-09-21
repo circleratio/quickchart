@@ -55,12 +55,13 @@ describe("layoutHeadingBullets", () => {
     expect(h2.height).toBeGreaterThan(h1.height);
   });
 
-  it("stacks the 2nd row's heading directly below the 1st row's heading (no gap, no overlap)", () => {
+  it("stacks the 2nd row's heading below the 1st, leaving a small gap so their blocks read as separate", () => {
     const outline = [node("r1", "A", [node("a", "1")]), node("r2", "B", [node("b", "1")])];
     const layout = layoutHeadingBullets(outline);
     const h1 = layout.find((l) => l.nodeIds.includes("r1"))!;
     const h2 = layout.find((l) => l.nodeIds.includes("r2"))!;
-    expect(h2.y).toBe(h1.y + h1.height);
+    expect(h2.y).toBeGreaterThan(h1.y + h1.height); // small gap, not touching
+    expect(h2.y).toBeLessThan(h1.y + h1.height + 10); // but not a large one
   });
 
   it("places one dashed separator between rows, but none above the first or below the last", () => {
