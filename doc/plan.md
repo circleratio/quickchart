@@ -1,0 +1,136 @@
+# quickchart 実装計画
+
+本書は `doc/spec.md` を入力として、MVP実装をどの順序で進めるかを定める。各フェーズは「動く状態」で終えることを原則とし、後続フェーズが前提とする機能が揃った時点で次に進む。フェーズ内の項目番号は実装順の目安であり、厳密な依存関係がない項目は前後してよい。
+
+## 進め方の方針
+
+- 技術的に不確実性が高い箇所(GDI経由のEMF生成、resvgでの日本語フォント埋め込み)は、機能を作り込む前にフェーズ0で最小構成の技術検証(スパイク)を行い、致命的な問題がないかを先に潰す。
+- 各フェーズの終わりに `npm run tauri dev` で実際に動作確認する。フェーズ7以降は構造化テンプレート機能ごとに要求仕様3.2の対象パターンが1つずつ動くようになる。
+- Undo/Redo(フェーズ3)は自由配置キャンバス操作の後、構造化テンプレート生成(フェーズ7)の前に導入する。テンプレート生成の「1操作1パッチ」(spec §4)を最初から正しく設計するため。
+
+## フェーズ0: 環境構築・技術検証スパイク
+
+**目的**: プロジェクトの雛形を用意し、設計上もっともリスクの高い2点を早期に検証する。
+
+- Tauri + React + TypeScript プロジェクトを初期化し、spec §2 のディレクトリ雛形(空ファイル可)を作成する。
+- Vitest / React Testing Library / `cargo test` の実行環境を整える。
+- **スパイクA(EMF)**: `windows-rs` で `CreateEnhMetaFile` → `Rectangle` 1個描画 → `CloseEnhMetaFile` → `.emf` ファイル保存、を行う最小コードを書き、実際にPowerPointに配置して「図形としてUngroup編集できるか」を確認する。`SetClipboardData(CF_ENHMETAFILE, ...)` によるクリップボード貼り付けも合わせて検証する。
+- **スパイクB(PNG/日本語フォント)**: `resvg` で日本語テキストを含むSVGをPNGにラスタライズし、文字化け・フォント埋め込みの問題がないか確認する。
+- **完了基準**: 上記2スパイクのコードが単体で動作し、PowerPoint上での見た目・編集可否を目視確認できていること。問題が見つかった場合は spec §8.3 の方式を見直してから先に進む。
+
+## フェーズ1: 図形モデル・自由配置キャンバス基盤
+
+**対象**: `core/model/shape.ts`, `core/model/document.ts`, `core/store/documentStore.ts`, `components/canvas/Canvas.tsx`, `components/canvas/ShapeRenderer.tsx`, `components/panels/ToolPanel.tsx`
+
+- `Shape`/`Document` 型(spec §3.1, 3.2。ただし `structuredBlocks` はフェーズ7まで未使用の空配列でよい)を実装。
+- Zustand の `documentStore` を作成し、図形の追加・移動・削除の基本アクションを実装(Undo/Redo未対応の状態でよい)。
+- `Canvas.tsx` でパン・ズーム、`ShapeRenderer.tsx` で矩形・楕円・直線・テキストを描画。
+- `ToolPanel.tsx` からツールを選んでキャンバス上に基本図形を配置できるようにする。
+
+**完了基準**: 矩形・楕円・直線・テキストボックスを配置し、ドラッグで移動できる。
+
+## フェーズ2: 選択・変形・整列・グルーピング
+
+**対象**: `components/canvas/SelectionOverlay.tsx`, `components/canvas/GuidesAndSnap.tsx`, `core/layout/snap.ts`, `core/layout/align.ts`, `components/panels/PropertyPanel.tsx`
+
+- `react-moveable` を使った選択・リサイズ・回転を実装。
+- `snap.ts`/`align.ts` を純関数として実装し、ユニットテストを書く(spec §5, §13)。
+- グリッドスナップ・ガイド線・整列/分布・グルーピング(`groupId`)・レイヤー順序(最前面/最背面等)・複製・コピー&ペーストを実装。
+- `PropertyPanel.tsx` に位置・サイズの数値表示/編集を実装。
+
+**完了基準**: 図形の選択・変形・整列・グルーピング・複製が一通り操作できる。
+
+## フェーズ3: Undo/Redo
+
+**対象**: `core/store/historyMiddleware.ts`, `components/toolbar/Toolbar.tsx`
+
+- Immer の `produceWithPatches` を使い、`documentStore` の全更新操作に対して `patches`/`inversePatches` をスタックする仕組みを実装(spec §4)。
+- `selectionStore` は対象外とする。
+- Toolbarに Undo/Redo ボタン、キーボードショートカット(Ctrl+Z / Ctrl+Y)を実装。
+- テスト: 複数操作→Undo連打→Redo連打で状態が一致することを検証(spec §13)。
+
+**完了基準**: フェーズ1・2で実装した全操作がUndo/Redoできる。
+
+## フェーズ4: スタイル・配色プリセット
+
+**対象**: `core/model/style.ts`, `components/panels/PropertyPanel.tsx`, `styles/theme.css`
+
+- 塗り色・線色・線太さ・線種・フォント・文字サイズ・文字色・配置を `PropertyPanel.tsx` から編集可能にする。
+- `ColorTheme` 3プリセット(Neutral Blue / Warm Gray / Monochrome、spec §7)を実装し、テーマ切り替えUIを用意する。
+- 「書式のコピペ」を `selectionStore` 経由で実装する。
+
+**完了基準**: 図形のスタイルを変更・プリセット適用・コピペできる。
+
+## フェーズ5: コネクタ
+
+**対象**: `components/canvas/ConnectorRenderer.tsx`, `core/model/shape.ts`(`ConnectorShape`)
+
+- コネクタ/矢印の作成、図形へのアンカー接続、接続先移動への追従を実装(spec §5、直線接続のみ)。
+- コネクタの選択・スタイル変更・Undo/Redo対応(フェーズ3の仕組みに乗せる)。
+
+**完了基準**: 図形同士をコネクタ/矢印で接続し、図形移動にコネクタが追従する。この時点で要求仕様3.2の「フローチャート」「因果関係図」(汎用パーツ+コネクタで対応)がMVPとして作図可能になる。
+
+## フェーズ6: プロジェクト管理(保存・読込)
+
+**対象**: `src-tauri/src/commands/project.rs`, `src-tauri/src/project_file.rs`, `src-tauri/src/recent_files.rs`, `core/io/projectFile.ts`, `core/io/tauriApi.ts`, `components/toolbar/Toolbar.tsx`
+
+- Rust側: `Document` に対応する serde 構造体、`.qct` ファイルの読み書き、`project_new`/`project_open`/`project_save`/`project_save_as`/`get_recent_files` コマンド(spec §10)。
+- `AppError`(`thiserror`)とIPCエラーのシリアライズ(spec §11)をこの段階で導入する(以降の全コマンドが利用するため)。
+- フロントエンド: `tauriApi.ts` 経由の呼び出しラッパー、失敗時のトースト通知、`projectFile.ts` のシリアライズ/デシリアライズと `migrateDocument` の骨組み(`formatVersion` は現時点で1固定でよい)。
+- Toolbarに新規作成・開く・保存・名前を付けて保存・直近使用ファイル一覧を実装。
+
+**完了基準**: フェーズ1〜5で作成した図形をファイルに保存し、再度開いて復元できる。`cargo test` でシリアライズ/デシリアライズの往復一致を検証する(spec §13)。
+
+## フェーズ7: 構造化テンプレート基盤 + ピラミッド/ロジックツリー
+
+**対象**: `core/model/document.ts`(`OutlineNode`/`StructuredBlock`)、`core/templates/outlineParser.ts`, `core/templates/outlineSerializer.ts`, `core/templates/sync.ts`, `core/templates/pyramid.ts`, `core/templates/logicTree.ts`, `components/panels/StructuredTextPanel.tsx`, `components/panels/TemplateLibraryPanel.tsx`
+
+- `StructuredBlock`/`OutlineNode` をデータモデルに追加。
+- `StructuredTextPanel.tsx` を行単位の構造化アウトラインエディタとして実装(`addSibling`/`addChild`/`indent`/`outdent`/`deleteNode` 操作、spec §6.1)。
+- `outlineParser.ts`(貼り付けインポート用)、`outlineSerializer.ts`(テキストへの書き出し用)を純関数として実装。
+- `pyramid.ts`/`logicTree.ts` で木構造→図形レイアウトを実装。
+- `sync.ts` で双方向同期(ラベル編集の相互反映、ノード追加/削除時の図形生成・削除ルール、spec §6.3)を実装し、構造化テンプレートの一括生成/更新を1回のUndo単位にまとめる(フェーズ3の `historyMiddleware` を利用)。
+- `TemplateLibraryPanel.tsx` から「パターン選択→階層テキスト入力→自動レイアウト生成」のフローを実装。
+
+**完了基準**: ピラミッド・ロジックツリーを階層テキストから生成し、アウトライン⇄図形のラベル双方向同期、ノード追加/削除、Undo/Redoが一通り動作する。境界値(空入力・ノード1個)のユニットテストを実装する(spec §13)。
+
+## フェーズ8: マトリクス・ベン図
+
+**対象**: `core/templates/matrix.ts`, `core/templates/venn.ts`, `components/panels/StructuredTextPanel.tsx`(拡張)
+
+- `matrix.ts`: 4象限固定のレイアウト、軸ラベル(`axisXLabel`/`axisYLabel`)専用入力欄、5件目以降のルート追加をUIで無効化+生成ロジック側でも防御的に無視(spec §6.2.1)。
+- `venn.ts`: 2〜3集合の円配置・重なり領域代表点の事前計算、要素のテキスト一致によるグルーピング、`templateNodeIds` の多対1対応、所属集合変化時の位置再計算(spec §6.2.2)。`params.setCount` に連動したルート数のUI制約。
+- 境界値テスト: マトリクス5象限目以降の無視、ベン図の3集合共通要素・同一集合内重複・所属集合変化ケース(spec §13)。
+
+**完了基準**: マトリクス・ベン図が階層テキストから生成でき、要求仕様3.2のMVP優先4パターン(マトリクス・ピラミッド・ロジックツリー・ベン図)がすべて完成する。
+
+## フェーズ9: ユーザーテンプレート登録
+
+**対象**: `src-tauri/src/user_templates.rs`, `core/model/userTemplate.ts`, `components/panels/TemplateLibraryPanel.tsx`(マイテンプレートタブ)、`components/panels/PropertyPanel.tsx`(登録操作)
+
+- Rust側: `user_templates.json` の読み書きと `get_user_templates`/`save_user_template`/`delete_user_template` コマンド(spec §6.4, §10)。
+- フロントエンド: 選択図形群の相対座標への正規化・登録、一覧表示、配置時の絶対座標への変換・新規シェイプID採番。
+- テスト: 座標正規化→配置の往復変換を検証(spec §13)。
+
+**完了基準**: よく使う図形の組み合わせをテンプレート登録し、別プロジェクトでも再利用できる(要求仕様4.4完全対応)。
+
+## フェーズ10: エクスポート本実装(SVG/PNG/EMF)
+
+**対象**: `core/io/`(SVGシリアライズ)、`src-tauri/src/commands/export_png.rs`, `src-tauri/src/commands/export_emf.rs`, `src-tauri/src/emf/writer.rs`, `src-tauri/src/emf/shape_draw.rs`, `src-tauri/src/clipboard.rs`
+
+- フェーズ0のスパイクを本実装に発展させる。
+- SVGエクスポート: `Document` からSVG文字列を組み立て、`export_svg` コマンドでファイル書き込み。
+- PNGエクスポート: `export_png` コマンドで resvg ラスタライズ(解像度指定対応)。
+- EMFエクスポート: `shape_draw.rs` でフェーズ1〜8で実装した全図形種別(矩形・楕円・直線・矢印・コネクタ・テキスト)をGDI描画命令に変換。`export_emf_to_file`/`export_emf_to_clipboard` コマンド、GDI失敗時のPNGクリップボードフォールバック(spec §8.3)。
+- `shape_draw.rs` のShape→GDI描画命令列変換ロジックを `cargo test` で検証(GDI呼び出し自体を除く、spec §13)。
+
+**完了基準**: SVG/PNG/EMF(ファイル・クリップボード双方)へのエクスポートが動作し、PowerPointに貼り付けた図形が編集可能であることを手動確認する。
+
+## フェーズ11: 仕上げ
+
+- エラーハンドリングの全体レビュー(spec §11のとおり、失敗時にUndo履歴・アプリ状態が壊れないことを再確認)。
+- パフォーマンス確認: 数十〜百オブジェクト規模での動作を手動確認(spec §12、数値目標なし)。
+- パッケージング: `tauri.conf.json` の `version` を単一の真実源とするビルドスクリプトの整備(spec §14)。
+- `README.md` 作成(要求仕様のREADME作成タスクに対応)。
+
+**完了基準**: MVPスコープ(要求仕様3.1〜3.2)を満たし、`doc/README.md` から一通りの使い方を辿れる状態。

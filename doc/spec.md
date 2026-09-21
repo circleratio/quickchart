@@ -1,0 +1,348 @@
+# quickchart 設計
+
+本書は `doc/requirement.md` を入力として、MVPの実装方針を定める。要求仕様の「9. 今後の検討事項」に列挙された未決事項は、本章で全て解決する(解決結果は「12. オープンクエスチョンへの回答」に一覧化)。
+
+## 1. アーキテクチャ概要
+
+- Tauri (Rust) をバックエンド、React + TypeScript をフロントエンドとするデスクトップアプリケーション。
+- 図形描画はフロントエンド側で SVG を DOM として直接操作する(仮想的な canvas ライブラリは使わず、Shape モデル→React コンポーネント→SVG 要素、という素直な描画パイプラインにする)。
+- Rust バックエンドは「ファイル I/O」「PNG/EMF へのラスタライズ・ベクター変換」「クリップボード操作」など OS 依存処理に責務を限定する。図形の編集ロジック・Undo/Redo・構造化テンプレート生成はすべてフロントエンド(TypeScript)側に置く。理由: これらはビジネスロジックであり、Rust/TS 間の IPC 往復を頻発させると操作のレスポンスが悪化するため。
+
+## 2. ディレクトリ構成
+
+```
+quickchart/
+├─ src-tauri/                       # Tauri (Rust) バックエンド
+│  ├─ src/
+│  │  ├─ main.rs                    # エントリポイント、Tauri Builder 登録
+│  │  ├─ commands/
+│  │  │  ├─ mod.rs
+│  │  │  ├─ project.rs              # project_new / open / save / save_as / get_recent_files
+│  │  │  ├─ export_png.rs           # export_png (resvg でラスタライズ)
+│  │  │  └─ export_emf.rs           # export_emf_to_file / export_emf_to_clipboard
+│  │  ├─ emf/
+│  │  │  ├─ mod.rs
+│  │  │  ├─ writer.rs               # CreateEnhMetaFile 経由の EMF 描画セッション管理
+│  │  │  └─ shape_draw.rs           # Shape モデル(JSON)→GDI 描画命令への変換
+│  │  ├─ clipboard.rs               # CF_ENHMETAFILE のクリップボード書き込み
+│  │  ├─ project_file.rs            # プロジェクトファイルの読み書き・バージョン管理
+│  │  ├─ recent_files.rs            # 直近使用ファイル一覧の永続化(アプリ設定ディレクトリ)
+│  │  └─ user_templates.rs          # ユーザー定義テンプレートの永続化(アプリ設定ディレクトリ)
+│  ├─ Cargo.toml
+│  └─ tauri.conf.json
+├─ src/                             # フロントエンド(React + TypeScript)
+│  ├─ main.tsx
+│  ├─ App.tsx
+│  ├─ components/
+│  │  ├─ canvas/
+│  │  │  ├─ Canvas.tsx              # SVG キャンバス本体、パン・ズーム
+│  │  │  ├─ ShapeRenderer.tsx       # Shape モデル→SVG 要素
+│  │  │  ├─ SelectionOverlay.tsx    # 選択/リサイズ/回転ハンドル(react-moveable)
+│  │  │  ├─ ConnectorRenderer.tsx   # コネクタの追従描画
+│  │  │  └─ GuidesAndSnap.tsx       # グリッド・ガイド線・スナップの可視化
+│  │  ├─ panels/
+│  │  │  ├─ ToolPanel.tsx           # 左パネル: 図形ツール
+│  │  │  ├─ TemplateLibraryPanel.tsx# 左パネル: パターンテンプレートライブラリ
+│  │  │  ├─ PropertyPanel.tsx       # 右パネル: プロパティ(スタイル/位置/サイズ)
+│  │  │  └─ StructuredTextPanel.tsx # 構造化テンプレート用の階層テキスト入力
+│  │  └─ toolbar/
+│  │     └─ Toolbar.tsx             # 上部: 保存・エクスポート・Undo/Redo・ズーム
+│  ├─ core/
+│  │  ├─ model/
+│  │  │  ├─ shape.ts                # Shape 型(共通 + 各図形種別)
+│  │  │  ├─ document.ts             # Document/Layer 型
+│  │  │  ├─ style.ts                # スタイル・配色プリセット型
+│  │  │  └─ userTemplate.ts         # UserTemplate 型
+│  │  ├─ store/
+│  │  │  ├─ documentStore.ts        # Zustand ストア(図形/レイヤー/構造化テキスト)
+│  │  │  ├─ historyMiddleware.ts    # Undo/Redo(immer patch ベース)
+│  │  │  └─ selectionStore.ts       # 選択状態
+│  │  ├─ templates/
+│  │  │  ├─ outlineParser.ts        # 階層テキスト(アウトライン記法)パーサ
+│  │  │  ├─ pyramid.ts              # ピラミッド生成規則
+│  │  │  ├─ logicTree.ts            # ロジックツリー生成規則
+│  │  │  ├─ matrix.ts               # マトリクス生成規則
+│  │  │  ├─ venn.ts                 # ベン図生成規則
+│  │  │  └─ sync.ts                 # テキスト⇄図形の双方向同期
+│  │  ├─ layout/
+│  │  │  ├─ snap.ts                 # グリッドスナップ計算
+│  │  │  └─ align.ts                # 整列・分布計算
+│  │  └─ io/
+│  │     ├─ projectFile.ts          # プロジェクトファイルのシリアライズ(型⇔JSON)
+│  │     └─ tauriApi.ts             # Tauri invoke() ラッパー
+│  └─ styles/
+│     └─ theme.css
+├─ package.json
+└─ README.md                        # セットアップ・使い方(フェーズ11で作成)
+```
+
+## 3. データモデル
+
+### 3.1 Shape (共通)
+
+```ts
+type ShapeId = string; // uuid v4
+
+interface ShapeBase {
+  id: ShapeId;
+  type: "rect" | "ellipse" | "line" | "arrow" | "connector" | "text";
+  x: number; y: number;           // 左上座標(キャンバス座標系)
+  width: number; height: number;
+  rotation: number;               // 度
+  style: ShapeStyle;
+  groupId?: string;               // グルーピング先
+  zIndex: number;                 // レイヤー順序
+  templateNodeIds?: string[];     // 構造化テンプレート由来の場合、対応する階層テキストノードのID群(通常1件。ベン図で複数集合が同一要素を共有する場合のみ複数件)
+}
+
+interface ConnectorShape extends ShapeBase {
+  type: "connector" | "arrow";
+  fromShapeId?: ShapeId; fromAnchor?: AnchorPoint; // 図形に接続している場合
+  toShapeId?: ShapeId;   toAnchor?: AnchorPoint;
+  points: Point[];                // 未接続端点、または経路の中間点
+}
+
+interface TextShape extends ShapeBase {
+  type: "text";
+  content: string;
+  align: "left" | "center" | "right";
+}
+```
+
+### 3.2 Document
+
+```ts
+interface Layer { id: string; name: string; visible: boolean; locked: boolean; shapeIds: ShapeId[]; }
+
+interface OutlineNode {
+  id: string;                     // nodeId(uuid v4)。構造化編集操作(追加/字下げ等)で採番され、テキスト編集では不変
+  text: string;
+  children: OutlineNode[];
+}
+
+interface StructuredBlock {
+  id: string;
+  pattern: "pyramid" | "logicTree" | "matrix" | "venn";
+  outline: OutlineNode[];         // 階層テキストの構造化データ(ソース・オブ・トゥルース)。ルートは複数可
+  params: Record<string, unknown>;// パターン別パラメータ(象限数、集合数など)
+  generatedShapeIds: ShapeId[];   // このブロックが生成した図形(直接編集も可)
+}
+
+interface Document {
+  formatVersion: number;          // プロジェクトファイルのスキーマバージョン
+  shapes: Record<ShapeId, Shape>;
+  layers: Layer[];
+  structuredBlocks: StructuredBlock[];
+  colorThemeId: string;
+}
+```
+
+### 3.3 プロジェクトファイル形式
+
+- 拡張子 `.qct`。内容は上記 `Document` を JSON にシリアライズしたものを正とする。
+- 要求仕様 4.6 は「JSON+SVGベースなど」と例示しているが、実際の保存形式は **JSON のみ** とし、SVG はプロジェクトファイルに保持しない。表示・エクスポート用の SVG はいつでも `Document` から再生成できるため、二重管理による不整合を避ける。エクスポート(4.5)は別ファイルへの書き出しという位置付けなので、この方針は要求仕様と矛盾しない。
+- `formatVersion` を先頭に持たせ、将来のスキーマ変更に備えたマイグレーション関数(`migrateDocument(doc, fromVersion)`)を `projectFile.ts` に用意する。
+
+### 3.4 ユーザーテンプレート
+
+要求仕様 4.4「よく使う図形の組み合わせをユーザー自身がテンプレート登録できる」に対応するデータモデル。プロジェクトファイルではなく、プロジェクトを跨いで再利用するためアプリ設定ディレクトリ側に保存する(詳細は §6.4)。
+
+```ts
+interface UserTemplate {
+  id: string;                     // uuid v4
+  name: string;
+  shapes: Shape[];                // 選択図形群のスナップショット。バウンディングボックス左上を原点(0,0)に正規化した相対座標で保持
+  createdAt: string;              // ISO 8601
+}
+```
+
+## 4. 状態管理・Undo/Redo
+
+- 状態管理には **Zustand** を採用する(Redux 比でボイラープレートが少なく、TypeScript との親和性が高いため)。
+- `documentStore` は Immer ミドルウェアを介して更新する。Undo/Redo は Immer の `produceWithPatches` が返す `patches`/`inversePatches` を操作ごとにスタックへ積む方式で実装する(`historyMiddleware.ts`)。
+  - 構造化テンプレートの再生成(アウトライン編集による図形の一括追加/削除)も 1 回の操作として 1 セットの patch にまとめ、Undo で一括して戻せるようにする。
+- `selectionStore` は Undo/Redo の対象外(選択状態は履歴に含めない)。
+
+## 5. キャンバス・図形操作(自由配置)
+
+- 選択・リサイズ・回転ハンドルの実装には **react-moveable** を使う。SVG 要素(`rect`/`ellipse`/`g` など)を直接対象にでき、要求仕様の「SVGをDOMとして直接操作する」方針と合致する。
+- 整列・分布・グリッドスナップは `core/layout/align.ts` / `snap.ts` に純関数として実装し、UI から独立してユニットテスト可能にする。
+- コネクタの追従: 接続先図形の `x/y/width/height/rotation` の変更を購読し、`fromAnchor`/`toAnchor` の絶対座標を再計算して経路を再描画する。MVP では直線接続のみとし、直交ルーティング(カギ線)は将来対応とする。
+- グルーピングは `groupId` の付与のみで表現し、専用のグループ図形は作らない(選択・移動・スタイル変更をまとめて行う際に `groupId` でフィルタする)。
+
+## 6. 構造化テンプレート生成
+
+### 6.1 階層テキストの記法・編集方式
+
+Markdown の箇条書きに近い、インデント+ハイフンのアウトライン記法を見た目のメンタルモデルとして採用する(独自記法・JSON直接編集は不採用)。理由: 対象ユーザー(コンサルタント等)が Markdown/Word/PowerPoint のアウトライン表示に日常的に触れており学習コストが低いこと、将来的に他ツールとのテキストのコピペ互換性を確保しやすいこと。
+
+```
+- 親項目
+  - 子項目1
+  - 子項目2
+    - 孫項目
+- 親項目2
+```
+
+**編集UIは素のテキストエリアではなく、行単位の入力欄を持つ構造化アウトラインエディタとする**(`StructuredTextPanel.tsx`)。各行が独立した入力欄で、Tab/Shift+Tab で字下げ・字上げ、行ごとのボタン操作で兄弟/子ノードの追加・削除・並べ替えを行う(Word/PowerPointのアウトラインビューに近い操作感)。
+
+- 理由: `StructuredBlock.outline`(§3.2 の `OutlineNode[]`)が同期のソース・オブ・トゥルースであり、`nodeId` は「行の内容」ではなく「どの操作で生成されたか」に紐づく。素のテキストを自由に書き換えられる方式だと、再パース時に「既存行の内容が変わった」のか「行が削除されて別の行が追加された」のかを区別する決定的な方法がなく、双方向同期(§6.3)が成立しない。行単位の明示的な操作(追加/削除/字下げ)であれば `nodeId` の生成・破棄が一意に決まる。
+- 外部テキストからの一括貼り付け(Word/PowerPoint のアウトラインからのコピペ等、当初の記法選定理由に対応)は「インポート」操作として提供する。貼り付けられた複数行テキストは `outlineParser.ts` でパースし、そのブロックの既存 `outline` を丸ごと置き換えて全ノードに新規 `nodeId` を採番する(=このケースのみ既存の生成図形は破棄・再生成される。Undo 可能なため確認ダイアログは出さない)。
+- インデント単位はスペース2つ、またはタブ1つ(パース時にタブはスペース2つに正規化)。`- ` で始まらない行・空行は無視する。
+- 逆に `OutlineNode[]` からテキスト表現へのシリアライズ(コピー用のエクスポート等)は `outlineSerializer.ts` が担う。
+
+### 6.2 パターン別解釈規則
+
+| パターン | 階層の意味付け |
+|---|---|
+| ピラミッドストラクチャー | そのまま木構造。ルート(複数可)を最上段、子を下段に配置。 |
+| ロジックツリー | そのまま木構造。ルート(複数可)を左端、子を右方向に展開。 |
+| マトリクス(4象限) | 下記 6.2.1 |
+| ベン図 | 下記 6.2.2 |
+
+#### 6.2.1 マトリクス(4象限)
+
+- 階層テキストは最大2階層とする。**1階層目のノードは象限そのもの(4個を基本とし、不足分は空の象限として扱う)**、2階層目はその象限内の箇条書き項目。1階層目の出現順は自然な読み順である「左上→右上→左下→右下」の固定順で解釈する。
+- マトリクスは4象限で固定のため、1階層目(ルート)が既に4件ある状態では `StructuredTextPanel.tsx` 上で「ルートを追加」操作自体を無効化し、5件目以降が生成されない矛盾状態を作らせない。あわせて `matrix.ts` 側でも防御的に5件目以降のルートを無視する(手編集・旧バージョンのプロジェクトファイル等、UI制約を経由しない入力に対するフォールバック)。
+- 縦軸・横軸自体のラベル(例:「市場成長性」「市場シェア」)は、階層テキストでは表現しない。軸ラベルと象限の間に親子関係がなく、木構造に押し込むと構造が歪むため、`StructuredBlock.params`(テンプレートパラメータ、要求仕様 4.2 の「パラメータ調整」に対応)の専用フィールド(`axisXLabel` / `axisYLabel`)として `StructuredTextPanel.tsx` に別入力欄を設ける。MVPでは軸名2件のみとし、各軸の両端ラベル(4件)は実装コストに対して優先度が低いため見送る(`params` は汎用の `Record<string, unknown>` なので、必要になれば後から追加できる)。軸ラベルから生成される `TextShape` も(対応する `outline` ノードを持たないため `params._axisShapeIds` で追跡する)そのブロックの `generatedShapeIds` に含める。
+- 例:
+  ```
+  - 高成長・高シェア
+    - 項目A
+    - 項目B
+  - 低成長・高シェア
+  - 高成長・低シェア
+    - 項目C
+  - 低成長・低シェア
+    - 項目D
+  ```
+
+#### 6.2.2 ベン図
+
+- 要求仕様 4.2 で「1階層目=集合名、2階層目=要素。複数集合に同一要素を記載すると重なり領域として扱う」と既に確定しているため、設計ではこれを実現するアルゴリズムのみを定める。
+- 対応集合数は **2〜3** を MVP 対象とする(`params.setCount`)。4集合以上は円の重なりが複雑になり自動レイアウトの可読性が下がるため将来対応とし、必要な場合は自由配置キャンバス上で手動作図する。ルート(集合)ノードの追加・削除は `params.setCount` に連動させ、`StructuredTextPanel.tsx` 上で 2〜3 の範囲外になる操作は無効化する。
+- アルゴリズム: 全要素について「所属する集合名の組み合わせ(冪集合のキー)」を、**要素のテキスト内容が完全一致するかどうか**で求め、同じ組み合わせを持つ要素をグループ化する。2集合/3集合それぞれについて円の配置(中心座標・半径)を固定パターンとして事前定義し、各組み合わせに対応する重なり領域の代表点(重心)をあらかじめ計算しておく。各グループの要素はその代表点を基準に縦に並べて配置する。
+- 例: `集合A: りんご, みかん, ぶどう` / `集合B: みかん, ぶどう, もも` → 「みかん・ぶどう」は `{A,B}` の組み合わせとなり A∩B 領域に配置。
+- **1図形=複数nodeIdの対応**: 上記のとおり、同一テキストの要素は集合ごとに別々の `OutlineNode`(別々の `nodeId`)として存在するが、生成される図形は1つにまとまる。そのため該当図形の `templateNodeIds` には複数の `nodeId` が入る(§3.1)。
+- **所属集合の組み合わせが変化した場合の扱い**: ベン図は他パターンと異なり、図形の位置がテキスト内容(どの集合に属するか)に直接従属する特殊なパターンである。要素テキストの編集によって所属集合の組み合わせが変わった場合(例: 共有していた「みかん」の片方だけを書き換えて非共通語にする)、その要素は再グルーピングされ、影響を受ける図形は新しい重なり領域の代表点へ位置を再計算する(=このケースに限り手動で調整した位置は保持されない)。組み合わせが変化しないテキスト編集(§6.3 の通常ケース)では位置を変えない。
+
+### 6.3 双方向同期
+
+- 同期の単位は「テキストのラベル内容」のみ(要求仕様 4.2 の方針どおり、配置・サイズ・色は同期しない。ベン図の所属集合変化時の位置再計算のみ §6.2.2 の例外)。
+- アウトライン側の `OutlineNode`(`nodeId`)と、生成された `TextShape.content`(または図形のラベル)を `templateNodeIds` で対応付ける(通常1対1。ベン図の共有要素のみ多対1、§6.2.2)。
+  - アウトライン側で行のテキストを編集 → 対応する `nodeId` を含む図形の `content` を更新(図形の位置・サイズは変更しない)。
+  - 図形側でラベルを直接編集 → 対応する `nodeId` の行テキストを更新。
+- ノードの追加・削除は、§6.1 のとおり構造化アウトラインエディタ上の明示的な操作(`addSibling` / `addChild` / `deleteNode`)として行われるため、diffは不要で以下のルールをそのまま適用できる。
+  - 子ノードの追加: 親ノードに対応する図形の近傍(右下に固定オフセット)へデフォルトサイズで新規図形を生成する。
+  - ルート(親を持たない)ノードの追加: 同ブロック内の既存の最後のルート図形を基準に、ピラミッドは下方向、ロジックツリーは右方向へ固定オフセットで配置する。既存ルートが1件もない場合はブロックの基準位置(ブロック初期配置位置)に配置する。マトリクス/ベン図でのルート追加上限は §6.2.1 / §6.2.2 のとおり。
+  - 削除時は対応図形を削除する。
+  - いずれも Undo 可能なため確認ダイアログは出さない。
+- 図形側での図形自体の追加・削除(テンプレート生成後に自由配置キャンバス上で行う操作)は、要求仕様どおりアウトライン側にフィードバックしない(`templateNodeIds` を持たない通常図形として扱われる)。
+
+### 6.4 ユーザーテンプレート登録
+
+要求仕様 4.4「よく使う図形の組み合わせをユーザー自身がテンプレート登録できる」に対応する。構造化テンプレート(6.1〜6.3、階層テキストからの自動生成)とは独立した機能で、テキストとの同期は行わない。
+
+- 登録操作: キャンバス上で1つ以上の図形を選択した状態で「テンプレートとして登録」を実行する(`PropertyPanel.tsx` のツールバーまたは選択図形の右クリックメニュー)。選択図形群をバウンディングボックス左上原点の相対座標に正規化して `UserTemplate`(§3.4)として保存する。
+- 保存先: プロジェクトファイルではなく、プロジェクトを跨いで再利用できるようアプリ設定ディレクトリに `user_templates.json` として保存する(`recent_files.rs` と同様の方式、`user_templates.rs` が読み書きを担う)。
+- 配置: `TemplateLibraryPanel.tsx` の「マイテンプレート」タブから選択・配置する。配置時は `shapes` を新規 `ShapeId` で複製し、ドロップ位置を基準に絶対座標へ変換した上で通常図形としてドキュメントに追加する(`templateNodeIds` は付与しない)。
+- 削除: マイテンプレート一覧から削除操作を行う(`user_templates.rs` 側の該当エントリを削除)。
+
+## 7. スタイル・配色プリセット
+
+- 配色テーマは `ColorTheme { id, name, primary[5], accent, textDark, textLight }` の形で3プリセットを標準搭載する。
+  1. **Neutral Blue**: 紺・グレー基調(標準的なコンサル資料トーン)
+  2. **Warm Gray**: ベージュ・ブラウン基調
+  3. **Monochrome**: グレースケール+アクセント1色
+- 各プリセットの正確な HEX 値は実装時に確定してよい(要求仕様と矛盾しない実装細部のため)。
+- テーマ切り替え(`Document.colorThemeId` の変更)は、以後 `createShape` で新規作成する図形の初期 `style` にのみ反映される。既存図形の `style` は各図形に個別の値として保持されており、テーマ切り替えでは遡って変更しない(要求仕様 4.3 で明確化)。スタイルパネルのクイックスウォッチ(現在のテーマの色をワンクリックで適用)は、既存図形に配色を反映させたい場合の手動手段として提供する。
+- 「書式のコピペ」は選択図形の `style` オブジェクトをクリップボード的な一時状態(`selectionStore` 内)に保持し、貼り付け先図形の `style` を上書きする形で実装する。
+
+## 8. 出力・エクスポート
+
+### 8.1 SVG エクスポート
+
+- フロントエンドで `Document` から SVG 文字列を組み立て(キャンバス描画と同じロジックを再利用)、Tauri の `project.rs` 経由でファイル書き込みのみバックエンドに委譲する。
+
+### 8.2 PNG エクスポート
+
+- Rust 側で **resvg** クレートを用い、フロントエンドが渡す SVG 文字列を指定解像度でラスタライズして PNG を生成する。日本語フォントの埋め込み・解像度指定の確実性を優先し、フロントエンド側の `<canvas>` 変換ではなくバックエンドでの処理とする。
+
+### 8.3 PowerPoint 貼り付け対応(EMF)
+
+事前調査の結果、Rust エコシステムには SVG やベクターモデルから EMF を直接生成できる十分にメンテナンスされたクレートは存在しない(`emf-core` 等は EMF→SVG の逆方向変換のみ対応)。そのため以下の方式を採る。
+
+- **方式**: Rust バックエンドが Shape モデル(JSON、resvg には渡さず独自変換)を解釈し、`windows-rs` クレート経由で Win32 GDI の `CreateEnhMetaFile` によるメタファイル記録用 DC を作成、`Rectangle` / `Ellipse` / `PolyBezier` / `MoveToEx`+`LineTo` / `TextOutW` などの GDI 描画命令を Shape ごとに発行し、`CloseEnhMetaFile` で `HENHMETAFILE` を得る。
+  - SVG パーサを経由しないため、対応図形セット(矩形・楕円・直線・矢印・コネクタ・テキスト)の範囲では変換の忠実性が高い。
+- **ファイルへのエクスポート**: `CopyEnhMetaFile` で `.emf` ファイルとして複製保存する。
+- **クリップボード経由の PowerPoint 貼り付け**: `OpenClipboard` → `EmptyClipboard` → `SetClipboardData(CF_ENHMETAFILE, handle)` → `CloseClipboard` を Win32 API 直呼び(`windows-rs`)で実装する。`clipboard-win` クレートは `CF_ENHMETAFILE` 定数を提供しているため、低レベル API のラッパーとして利用を検討する。
+- **フォールバック(MVPでの簡略化)**: 設計時点ではGDI失敗時にPNGのクリップボード転送へ自動フォールバックする方針としていたが、実装時にCF_DIB形式でのビットマップ合成・クリップボード書き込みを新たに実装するコストに対して優先度が低いと判断し、MVPでは見送った。GDI生成/クリップボード転送に失敗した場合は、エラー内容をユーザーに通知し「PNG画像としてのエクスポートをお試しください」という案内を表示するに留める(自動フォールバックはしない、ユーザーが手動でPNGエクスポートをやり直す)。
+- Tauri 公式クリップボード API はテキスト/HTML までしか対応しておらず画像系カスタムフォーマットに未対応のため、この処理は自作の Tauri コマンド(`export_emf.rs` / `clipboard.rs`)として実装し、既存のクリップボードプラグインには依存しない。
+- **既知のリスク**: SVG/PNG(§8.1, 8.2)はフロントエンドのSVG描画ロジックを再利用する一方、EMF(本節)はRust側でShapeモデルから独立してGDI描画命令を組み立てる、完全に別の描画パイプラインになる。フォントレンダリングや矢印形状の丸め等で両者の見た目が将来的に乖離するリスクがあるため、対応図形を追加・変更する際は両方のレンダラを同時に確認する運用ルールとする。
+- **既知の制限事項(テキスト揃え)**: 生成したEMFを`PlayEnhMetaFile`で直接再生した場合(`src-tauri/examples/emf_align_debug.rs`で検証可能)、`SetTextAlign`による左/中央/右揃えは正しく描画される。しかし、PowerPointに貼り付けた図形を「グループ化解除」して個別図形(PowerPoint独自のテキストボックス形式)に変換すると、揃え情報が引き継がれず左揃えに正規化される事象を確認した。`TextOutW`+`SetTextAlign`というGDIの描画命令列を、PowerPoint固有のテキストボックスオブジェクトへ変換する処理自体の仕様に起因すると考えられ、GDI側の描画命令をこれ以上調整しても解決しない。グループ解除せずに画像として扱う分には正しく表示される。MVPでは対応を見送り、既知の制限として記録する。
+
+## 9. プロジェクト管理
+
+- 直近使用ファイル一覧は Tauri のアプリ設定ディレクトリ(`app_config_dir()`)に `recent_files.json` として保存し、`recent_files.rs` が読み書きを担う(最大件数はさしあたり10件)。
+- 新規作成・開く・保存・名前を付けて保存は `commands/project.rs` の Tauri コマンド(`project_new` は実質フロントエンド側で空 `Document` を生成するのみ、`project_open`/`project_save`/`project_save_as` はファイルダイアログ+I/O)として実装する。
+- ユーザーテンプレート(§3.4, §6.4)は同様にアプリ設定ディレクトリに `user_templates.json` として保存し、`user_templates.rs` が読み書きを担う。
+
+## 10. Tauri コマンド(IPC)一覧
+
+| コマンド | 引数 | 戻り値 | 説明 |
+|---|---|---|---|
+| `project_open` | - | `{ path, document }` | ファイルダイアログを開き `.qct` を読み込む |
+| `project_open_path` | `path` | `{ path, document }` | ダイアログなしで指定パスを直接読み込む(直近使用ファイル一覧からの再オープン用) |
+| `project_save` | `path, document` | `void` | 指定パスへ上書き保存 |
+| `project_save_as` | `document` | `{ path }` | 名前を付けて保存ダイアログ |
+| `get_recent_files` | - | `string[]` | 直近使用ファイル一覧 |
+| `export_svg` | `svgText` | `path` | 保存ダイアログを自前で開き、選択パスへ SVG を書き出す(`project_save_as`と同様、`path`を引数に取らず自らダイアログを出す方式に変更) |
+| `export_png` | `svgText, scale` | `path` | 保存ダイアログを自前で開き、resvg で PNG ラスタライズして保存 |
+| `export_emf_to_file` | `shapes` | `path` | 保存ダイアログを自前で開き、GDI 経由で EMF ファイル生成 |
+| `export_emf_to_clipboard` | `shapes` | `void` | GDI 経由で EMF をクリップボードへ転送 |
+| `get_user_templates` | - | `UserTemplate[]` | ユーザーテンプレート一覧 |
+| `save_user_template` | `name, shapes` | `UserTemplate` | 選択図形群をテンプレートとして登録 |
+| `delete_user_template` | `id` | `void` | ユーザーテンプレートを削除 |
+
+すべて `Result<T, AppError>` を返し、`AppError` は `{ kind: string, message: string }` にシリアライズしてフロントエンドへ渡す(11章参照)。
+
+## 11. エラーハンドリング方針
+
+- Rust 側は `thiserror` で `AppError` を定義し、`io::Error` / GDI 呼び出し失敗 / シリアライズ失敗などを列挙型のバリアントに変換して IPC 境界でメッセージ化する。生の OS エラーコードをそのままユーザーに見せず、`kind` ごとにフロントエンド側で日本語メッセージへマッピングする。
+- フロントエンドは Tauri コマンド呼び出しを共通ラッパー(`tauriApi.ts`)経由で行い、失敗時はトースト通知で表示する。ファイル保存/エクスポート系の失敗はキャンバスの状態(Undo履歴含む)に影響を与えない(失敗してもアプリ内状態はロールバックしない = そもそも状態を変更する前に実行する)。
+- 階層テキストのパースはエラーを許容する設計にする(不正な行は無視して処理を継続し、パース不能で図形が1つも生成できない場合のみ「入力を確認してください」という非破壊的な警告を表示する)。テンプレート生成に失敗しても既存図形は保持される。
+
+## 12. パフォーマンス方針
+
+- 要求仕様どおり MVP では具体的な数値目標を定めない。
+- 数十〜百オブジェクト規模であれば SVG 直接操作でも実用的な速度が出る想定(仮想化やCanvas化は将来のパフォーマンス検証フェーズで検討)。
+- **設計と実装の差異**: 当初「Zustandストアの購読粒度を図形単位(`useShape(id)`のようなセレクタ)にし、無関係な図形の再描画を避ける」という配慮を想定していたが、実装では`Canvas.tsx`は`document`オブジェクト全体を購読しており(図形1個の変更でも全図形が再評価される)、この最適化は行っていない。数十〜百オブジェクト規模のシンプルなSVG要素であればReactの再レンダリングコストは実用上問題にならないと判断し、MVPでは見送った。将来、体感的な速度低下が確認された場合に導入を検討する。
+
+## 13. テスト方針
+
+- フロントエンド: **Vitest** + React Testing Library。
+  - `outlineParser.ts`/`outlineSerializer.ts`、`pyramid.ts`/`logicTree.ts`/`matrix.ts`/`venn.ts`、`snap.ts`/`align.ts`、`sync.ts` は UI から独立した純関数群として実装し、単体テストの主対象とする。
+  - 境界値例: 空のアウトライン入力、ノード1個のみ、マトリクスで象限がUI制約を経由せず(手編集インポート等で)5個以上ある入力(`matrix.ts` が4個目までのみ図形化することを確認)、ベン図で3集合すべてに共通する要素、同一集合内の重複要素、ベン図で要素テキスト編集により所属集合の組み合わせが変化するケース(位置が再計算されることを確認)。
+  - 構造化アウトラインエディタの `addSibling`/`addChild`/`indent`/`deleteNode` 操作それぞれについて、対応する `nodeId` の生成・破棄と図形への反映を検証する。
+  - Undo/Redo: 複数操作→Undo連打→Redo連打で状態(スナップショット)が一致することを検証する。
+  - ユーザーテンプレート: 複数図形選択→登録→座標正規化→別位置への配置で絶対座標へ正しく変換されることを検証する。
+- バックエンド: `cargo test` で `project_file.rs` のシリアライズ/デシリアライズの往復一致、`shape_draw.rs` の Shape→GDI描画命令列への変換ロジック(GDI 呼び出し自体から分離した部分)を検証する。実際の GDI 呼び出し・クリップボード転送は Windows 実行環境に依存するため自動テスト対象外とし、後述の手動動作確認で担保する。
+- E2E テストは MVP の対象外とする(手動動作確認で代替。将来的に Tauri 向け E2E ツールの導入を検討)。
+
+## 14. パッケージング方針
+
+- `src-tauri/Cargo.toml` と `package.json` それぞれにバージョンを持たせず、`tauri.conf.json` の `version` を単一の真実源とし、ビルド時に両ファイルへ反映するスクリプトを `package.json` の `scripts` に用意する。
+- 主要な追加依存(候補): フロントエンド `zustand`, `immer`, `react-moveable`, `uuid`。バックエンド `windows-rs`(GDI呼び出し用), `resvg`, `serde`/`serde_json`, `thiserror`。`clipboard-win` はクリップボード書き込みの補助として採否を実装時に判断する。
+
+## 15. オープンクエスチョンへの回答(要求仕様9章対応)
+
+| 要求仕様9章の項目 | 本設計での回答 |
+|---|---|
+| SVG操作・状態管理ライブラリ選定 | 状態管理: Zustand+Immer。選択/変形ハンドル: react-moveable。SVG自体は自前レンダリング(§4, §5) |
+| パターンごとの階層テキスト解釈規則の詳細、記法自体 | Markdown風アウトライン(インデント+`-`)を採用。マトリクス/ベン図の規則を §6.2 で確定 |
+| ノード追加削除時の図形の新規配置・削除ルール | §6.3: 親図形の近傍にオフセット配置/対応図形を削除、Undo可能なため確認なし |
+| PowerPoint貼り付け対応の実現方式 | §8.3: windows-rs経由のGDI直接描画によるEMF生成+クリップボード転送。フォールバックはPNG |
+| テンプレートパラメータ調整UIの詳細設計 | `StructuredBlock.params` + `StructuredTextPanel.tsx` の専用入力欄(§3.2, §6.2.1) |
+| 配色プリセットの具体的なカラーパレット | 3プリセットの方向性を確定(§7)。正確なHEX値は実装時に決定 |
+| 表の専用オブジェクト化の要否 | 要求仕様どおり見送り。MVPでは矩形等の汎用パーツの組み合わせで代用 |
+| 因果関係図の構造化テンプレート化の要否 | 要求仕様どおり見送り。汎用パーツ+コネクタで手動作図 |
