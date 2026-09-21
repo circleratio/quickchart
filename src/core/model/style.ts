@@ -115,10 +115,10 @@ export function headingStyle(themeId: string = DEFAULT_COLOR_THEME_ID, fontSize 
 
 // Dashed rule between headingBullets' rows (see headingBullets.ts). Uses the
 // theme's mid-tone shade rather than outlineStyle's dark primary[0] - a full
-// row divider reads better as a subtle rule than a structural border. Wider
-// than ShapeRenderer's own 2px floor for an unstyled line, so it reads as a
-// deliberate rule rather than a hairline.
+// row divider reads better as a subtle rule than a structural border. This is
+// ShapeRenderer's own floor for an unstyled line (Math.max(strokeWidth, 2)) -
+// a thinner value here wouldn't render any thinner.
 export function separatorStyle(themeId: string = DEFAULT_COLOR_THEME_ID): ShapeStyle {
   const theme = getColorTheme(themeId);
-  return { fill: "none", stroke: theme.primary[2], strokeWidth: 3, strokeDasharray: "4 3" };
+  return { fill: "none", stroke: theme.primary[2], strokeWidth: 2, strokeDasharray: "4 3" };
 }
