@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import Moveable from "react-moveable";
 import type { Shape } from "../../core/model/shape";
 import { computeAnchoredResize } from "../../core/layout/resize";
@@ -51,9 +51,25 @@ export function SelectionOverlay({
 }: SelectionOverlayProps) {
   const resizeStartRef = useRef<ResizeStartState | null>(null);
   const rotateStartRef = useRef<RotateStartState | null>(null);
+  const moveableRef = useRef<Moveable>(null);
+
+  // Move-drag (Canvas.tsx's own pointer handlers, not react-moveable's -
+  // `draggable` is deliberately not set above) repositions the target by
+  // updating the shape's x/y in the store, which re-renders ShapeRenderer at
+  // its new position - but react-moveable only re-measures the target's box
+  // on its own gestures, not on an arbitrary external DOM change, so its
+  // selection frame/handles were left stuck at wherever the target was when
+  // selected (the reported bug). `updateRect()` is react-moveable's own
+  // documented hook for this ("if the location or size of the target is
+  // changed, call the `.updateRect()` method") - align/distribute and Undo/
+  // Redo reposition shapes the same external way, so this isn't drag-only.
+  useEffect(() => {
+    moveableRef.current?.updateRect();
+  }, [shape.x, shape.y, shape.width, shape.height, shape.rotation]);
 
   return (
     <Moveable
+      ref={moveableRef}
       target={target}
       resizable
       rotatable
