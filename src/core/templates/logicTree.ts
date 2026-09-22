@@ -4,7 +4,9 @@ import type { LayoutNode } from "./treeLayout";
 
 const NODE_WIDTH = 160;
 const NODE_HEIGHT = 60;
-const GAP = 24;
+// 1.5x the original value - ロジックツリー's blocks read better with more
+// breathing room (matches pyramid.ts's own GAP getting the same 1.5x).
+const GAP = 36;
 
 // Logic tree (ロジックツリー): the outline maps directly onto a tree, root(s)
 // at the left edge, children extending rightward (doc/spec.md §6.2).

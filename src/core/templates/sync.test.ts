@@ -895,12 +895,93 @@ describe("tree connector lines (ツリー図)", () => {
     expect(lineShapesFor(document, blockId)).toHaveLength(4); // parent stub + bus + 2 child stubs
   });
 
-  it("does not draw connectors for other patterns (e.g. logicTree)", () => {
+  it("draws a rightward elbow connector (horizontal stubs, vertical bus) for logicTree too", () => {
     const { document: base, blockId } = sync.addEmptyStructuredBlock(createEmptyDocument(), "logicTree");
+    let document = sync.addFirstOutlineNode(base, blockId);
+    const rootId = nodeId(document, blockId, 0);
+    document = sync.addOutlineChild(document, blockId, rootId);
+    const firstChildId = document.structuredBlocks[0].outline[0].children[0].id;
+    document = sync.addOutlineSibling(document, blockId, firstChildId);
+
+    const lines = lineShapesFor(document, blockId);
+    expect(lines).toHaveLength(4); // parent stub + bus + 2 child stubs
+    // Stubs run horizontally (zero height); only the bus runs vertically.
+    expect(lines.filter((l) => l.height === 0)).toHaveLength(3);
+    const bus = lines.find((l) => l.width === 0)!;
+    expect(bus).toBeDefined();
+  });
+
+  it("does not draw connectors for a fixed-hierarchy pattern (e.g. matrix)", () => {
+    const { document: base, blockId } = sync.addEmptyStructuredBlock(createEmptyDocument(), "matrix");
     let document = sync.addFirstOutlineNode(base, blockId);
     const rootId = nodeId(document, blockId, 0);
     document = sync.addOutlineChild(document, blockId, rootId);
 
     expect(lineShapesFor(document, blockId)).toHaveLength(0);
+  });
+});
+
+describe("tree node spacing (reproducing the reported bug: uneven sibling gaps)", () => {
+  // aaa -> bbb -> CCC
+  //     -> ddd -> DDD, EEE
+  // The reported bug: DDD-EEE's gap came out much larger than CCC-DDD's,
+  // even though both are a "row" of the same tree - a symptom of the old
+  // newNodeOffset returning a fixed TOTAL offset tuned for the original
+  // 160x60 default node size, rather than deriving the gap from each
+  // reference node's own actual size.
+  function shapeFor(doc: Document, nid: string) {
+    return Object.values(doc.shapes).find((s) => s.templateNodeIds?.includes(nid))!;
+  }
+
+  it("logicTree: gives every sibling pair in the tree the same vertical gap", () => {
+    const { document: base, blockId } = sync.addEmptyStructuredBlock(createEmptyDocument(), "logicTree");
+    let document = sync.addFirstOutlineNode(base, blockId);
+    const aaaId = nodeId(document, blockId, 0);
+
+    document = sync.addOutlineChild(document, blockId, aaaId); // bbb
+    const bbbId = document.structuredBlocks[0].outline[0].children[0].id;
+    document = sync.addOutlineChild(document, blockId, bbbId); // CCC
+    const cccId = document.structuredBlocks[0].outline[0].children[0].children[0].id;
+
+    document = sync.addOutlineSibling(document, blockId, bbbId); // ddd
+    const dddLowerId = document.structuredBlocks[0].outline[0].children[1].id;
+    document = sync.addOutlineChild(document, blockId, dddLowerId); // DDD
+    const DDDId = document.structuredBlocks[0].outline[0].children[1].children[0].id;
+    document = sync.addOutlineSibling(document, blockId, DDDId); // EEE
+    const EEEId = document.structuredBlocks[0].outline[0].children[1].children[1].id;
+
+    const ccc = shapeFor(document, cccId);
+    const DDD = shapeFor(document, DDDId);
+    const EEE = shapeFor(document, EEEId);
+
+    const cccToDDDGap = DDD.y - (ccc.y + ccc.height);
+    const DDDToEEEGap = EEE.y - (DDD.y + DDD.height);
+    expect(DDDToEEEGap).toBeCloseTo(cccToDDDGap);
+  });
+
+  it("pyramid: gives every sibling pair in the tree the same horizontal gap", () => {
+    const { document: base, blockId } = sync.addEmptyStructuredBlock(createEmptyDocument(), "pyramid");
+    let document = sync.addFirstOutlineNode(base, blockId);
+    const aaaId = nodeId(document, blockId, 0);
+
+    document = sync.addOutlineChild(document, blockId, aaaId); // bbb
+    const bbbId = document.structuredBlocks[0].outline[0].children[0].id;
+    document = sync.addOutlineChild(document, blockId, bbbId); // CCC
+    const cccId = document.structuredBlocks[0].outline[0].children[0].children[0].id;
+
+    document = sync.addOutlineSibling(document, blockId, bbbId); // ddd
+    const dddLowerId = document.structuredBlocks[0].outline[0].children[1].id;
+    document = sync.addOutlineChild(document, blockId, dddLowerId); // DDD
+    const DDDId = document.structuredBlocks[0].outline[0].children[1].children[0].id;
+    document = sync.addOutlineSibling(document, blockId, DDDId); // EEE
+    const EEEId = document.structuredBlocks[0].outline[0].children[1].children[1].id;
+
+    const ccc = shapeFor(document, cccId);
+    const DDD = shapeFor(document, DDDId);
+    const EEE = shapeFor(document, EEEId);
+
+    const cccToDDDGap = DDD.x - (ccc.x + ccc.width);
+    const DDDToEEEGap = EEE.x - (DDD.x + DDD.width);
+    expect(DDDToEEEGap).toBeCloseTo(cccToDDDGap);
   });
 });
