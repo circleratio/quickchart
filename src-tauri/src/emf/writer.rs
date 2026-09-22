@@ -1,4 +1,4 @@
-use super::shape_draw::{BoxCommand, DrawCommand, LineCommand, Rgb, TextCommand};
+use super::shape_draw::{BoxCommand, DrawCommand, LineCommand, PolygonCommand, Rgb, TextCommand};
 use crate::error::AppError;
 use windows::Win32::Foundation::COLORREF;
 use windows::Win32::Graphics::Gdi::{
@@ -42,6 +42,7 @@ pub fn record_emf(commands: &[DrawCommand]) -> Result<windows::Win32::Graphics::
                 DrawCommand::Ellipse(b) => draw_box(emf_dc, b, true),
                 DrawCommand::Line(l) => draw_line(emf_dc, l),
                 DrawCommand::Text(t) => draw_text(emf_dc, t),
+                DrawCommand::Polygon(p) => draw_polygon(emf_dc, p),
             }
         }
 
@@ -92,6 +93,28 @@ unsafe fn draw_box(hdc: windows::Win32::Graphics::Gdi::HDC, b: &BoxCommand, elli
         } else {
             let _ = Rectangle(hdc, left, top, right, bottom);
         }
+    });
+
+    SelectObject(hdc, old_brush);
+    SelectObject(hdc, old_pen);
+    let _ = DeleteObject(brush.into());
+    let _ = DeleteObject(pen.into());
+}
+
+unsafe fn draw_polygon(hdc: windows::Win32::Graphics::Gdi::HDC, p: &PolygonCommand) {
+    let brush = CreateSolidBrush(colorref(p.fill));
+    let old_brush = SelectObject(hdc, brush.into());
+    let pen_style = if p.dashed { PS_DASH } else { PS_SOLID };
+    let pen = CreatePen(pen_style, p.stroke_width.max(1.0) as i32, colorref(p.stroke));
+    let old_pen = SelectObject(hdc, pen.into());
+
+    with_rotation(hdc, p.cx, p.cy, p.rotation, || {
+        let points: Vec<windows::Win32::Foundation::POINT> = p
+            .points
+            .iter()
+            .map(|&(x, y)| windows::Win32::Foundation::POINT { x: x as i32, y: y as i32 })
+            .collect();
+        let _ = windows::Win32::Graphics::Gdi::Polygon(hdc, &points);
     });
 
     SelectObject(hdc, old_brush);

@@ -547,6 +547,120 @@ describe("bulletMatrix blocks (fully-relayouted pattern)", () => {
   });
 });
 
+describe("pyramidChart blocks (fully-relayouted pattern)", () => {
+  function pyramidChartBlock(doc: Document, columnHeaders: string[]) {
+    const { document, blockId } = sync.addEmptyStructuredBlock(doc, "pyramidChart");
+    const withColumns = sync.updatePyramidChartColumns(document, blockId, columnHeaders);
+    return { document: sync.addFirstOutlineNode(withColumns, blockId), blockId };
+  }
+
+  it("fills a newly-added level with a scale slot plus one cell per configured column", () => {
+    const { document, blockId } = pyramidChartBlock(createEmptyDocument(), ["定義", "区分1"]);
+    const block = document.structuredBlocks.find((b) => b.id === blockId)!;
+    expect(block.outline[0].children).toHaveLength(3); // scale + 2 cells
+  });
+
+  it("generates one polygon band per level, tapering by index - apex (level 0) narrower than the base", () => {
+    let { document, blockId } = pyramidChartBlock(createEmptyDocument(), ["定義"]);
+    const level1Id = nodeId(document, blockId, 0);
+    document = sync.addOutlineSibling(document, blockId, level1Id);
+
+    const block = document.structuredBlocks[0];
+    const shapes = block.generatedShapeIds.map((id) => document.shapes[id]);
+    const band1 = shapes.find((s) => s.type === "polygon" && s.templateNodeIds?.includes(level1Id))!;
+    const level2Id = block.outline[1].id;
+    const band2 = shapes.find((s) => s.type === "polygon" && s.templateNodeIds?.includes(level2Id))!;
+    expect(band1.style.fill).not.toBe(band2.style.fill); // apex is darker than the level below it
+    expect(band2.y).toBeGreaterThanOrEqual(band1.y + band1.height);
+  });
+
+  it("uses white text for the item-name/scale labels over the dark apex band, and dark text once the bands get light enough", () => {
+    let { document, blockId } = pyramidChartBlock(createEmptyDocument(), ["定義"]);
+    // 5 levels: the apex (index 0, darkest) and the last (index 4, lightest of
+    // the theme's 5 shades) sit at opposite ends of style.ts's contrast check.
+    for (let i = 1; i < 5; i++) {
+      const lastId = document.structuredBlocks[0].outline[i - 1].id;
+      document = sync.addOutlineSibling(document, blockId, lastId);
+    }
+
+    const block = document.structuredBlocks[0];
+    const shapes = block.generatedShapeIds.map((id) => document.shapes[id]);
+    const apexId = block.outline[0].id;
+    const baseId = block.outline[4].id;
+    // The item-name label is the only "text" shape tied to the level's own
+    // (row) nodeId - its scale/cell children have their own, separate ids.
+    const apexLabel = shapes.find((s) => s.type === "text" && s.templateNodeIds?.includes(apexId));
+    const baseLabel = shapes.find((s) => s.type === "text" && s.templateNodeIds?.includes(baseId));
+
+    expect(apexLabel!.style.textColor).toBe("#ffffff"); // neutral-blue's textLight
+    expect(baseLabel!.style.textColor).toBe("#1f2933"); // neutral-blue's textDark
+  });
+
+  it("reordering levels (move up/down) regenerates every band's taper for its new index, not just its position", () => {
+    let { document, blockId } = pyramidChartBlock(createEmptyDocument(), ["定義"]);
+    const level1Id = nodeId(document, blockId, 0);
+    document = sync.addOutlineSibling(document, blockId, level1Id); // level 2
+    const level2Id = document.structuredBlocks[0].outline[1].id;
+
+    // Before the swap: level 1 is the apex (a true triangle - both top
+    // vertices coincide), level 2 is not.
+    function bandFor(doc: Document, targetNodeId: string) {
+      const shape = doc.structuredBlocks[0].generatedShapeIds
+        .map((id) => doc.shapes[id])
+        .find((s) => s.type === "polygon" && s.templateNodeIds?.includes(targetNodeId));
+      if (!shape || shape.type !== "polygon") throw new Error("band not found");
+      return shape;
+    }
+
+    const apexBefore = bandFor(document, level1Id);
+    expect(apexBefore.points[0].x).toBeCloseTo(apexBefore.points[1].x);
+
+    document = sync.moveOutlineNode(document, blockId, level2Id, "up");
+
+    // level 2 is now the apex (index 0) and must have been re-tapered to a
+    // triangle, not just moved to index 0's y position with its old
+    // (non-apex) trapezoid shape still baked in.
+    const apexAfter = bandFor(document, level2Id);
+    expect(apexAfter.points[0].x).toBeCloseTo(apexAfter.points[1].x);
+    const baseAfter = bandFor(document, level1Id);
+    expect(baseAfter.points[0].x).not.toBeCloseTo(baseAfter.points[1].x);
+  });
+
+  it("growing columns keeps existing cells' content and the scale slot, padding new columns with empty cells", () => {
+    let { document, blockId } = pyramidChartBlock(createEmptyDocument(), ["定義"]);
+    const scaleId = document.structuredBlocks[0].outline[0].children[0].id;
+    const cellId = document.structuredBlocks[0].outline[0].children[1].id;
+
+    document = sync.updatePyramidChartColumns(document, blockId, ["定義", "区分1"]);
+    const row = document.structuredBlocks[0].outline[0];
+    expect(row.children).toHaveLength(3);
+    expect(row.children[0].id).toBe(scaleId); // scale slot survived
+    expect(row.children[1].id).toBe(cellId); // column 0's content survived
+    expect(row.children[2].text).toBe(""); // new column starts empty
+  });
+
+  it("updatePyramidChartTitle regenerates a title label shape with the new text", () => {
+    let { document, blockId } = pyramidChartBlock(createEmptyDocument(), ["定義"]);
+    document = sync.updatePyramidChartTitle(document, blockId, "市場規模ピラミッド");
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    const title = shapes.find((s) => s.type === "text" && s.content === "市場規模ピラミッド");
+    expect(title).toBeDefined();
+  });
+
+  it("editing a cell's text patches its shape's content in place without moving any shape", () => {
+    let { document, blockId } = pyramidChartBlock(createEmptyDocument(), ["定義"]);
+    const cellId = document.structuredBlocks[0].outline[0].children[1].id;
+
+    const before = document.structuredBlocks[0].generatedShapeIds.map((id) => ({ ...document.shapes[id] }));
+    document = sync.updateOutlineNodeText(document, blockId, cellId, "新しい定義");
+    const after = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+
+    expect(after.map((s) => ({ x: s.x, y: s.y }))).toEqual(before.map((s) => ({ x: s.x, y: s.y })));
+    const edited = after.find((s) => s.templateNodeIds?.includes(cellId))!;
+    expect(edited.type === "text" && edited.content).toBe("新しい定義");
+  });
+});
+
 describe("pyramid incremental placement (reproducing the reported bug)", () => {
   it("places a child below its root (greater y, same-ish x) via addOutlineChild", () => {
     let { document, blockId } = pyramidBlock(createEmptyDocument());

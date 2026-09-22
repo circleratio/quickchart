@@ -1,4 +1,5 @@
 import type { OutlineNode } from "../model/document";
+import type { Point } from "../model/shape";
 import type { ThemeColorSlot } from "../model/style";
 
 export interface LayoutNode {
@@ -20,8 +21,10 @@ export interface LayoutNode {
   // borderless text cell that is its own background (headingBullets' row
   // heading; bulletMatrix's row/column headers); "line" generates a plain
   // (typically dashed) line, not a labeled shape (headingBullets' row
-  // separators; bulletMatrix's row/column grid lines).
-  kind?: "text" | "ellipse" | "rect" | "label" | "heading" | "line";
+  // separators; bulletMatrix's row/column grid lines); "polygon" generates a
+  // solid-filled, unlabeled closed shape (pyramidChart's pyramid-slice bands -
+  // see pyramidChart.ts), using the `points` field below.
+  kind?: "text" | "ellipse" | "rect" | "label" | "heading" | "line" | "polygon";
   // Horizontal text alignment for a text-bearing kind ("text"/"label"/
   // "heading"); defaults to "center" when omitted (see regenerateBlockShapes
   // in sync.ts). headingBullets'/bulletMatrix's bullet items use "left",
@@ -41,6 +44,15 @@ export interface LayoutNode {
   // theme.accent) - e.g. bulletMatrix's detail line wants a lighter shade
   // than its title line, for visual hierarchy within a cell.
   textColorSlot?: ThemeColorSlot;
+  // Overrides the kind's own default text color by contrast against the
+  // theme color at this slot, instead of a fixed color (see style.ts's
+  // contrastTextColor) - for a label drawn on top of a shape whose own fill
+  // varies enough that neither a fixed dark nor a fixed light text color
+  // stays legible everywhere. pyramidChart's item-name/scale labels set this
+  // to their own band's fillColorSlot (pyramidChart.ts), since the band goes
+  // from a dark shade at the apex to a light one at the base. Takes priority
+  // over `textColorSlot` when both are set.
+  contrastBgColorSlot?: ThemeColorSlot;
   // For a "heading" kind: which theme color to fill the cell with (see
   // headingStyle in style.ts). Defaults to primary[0] (headingBullets' navy);
   // bulletMatrix's row/column headers pass a different slot so all three
@@ -51,6 +63,15 @@ export interface LayoutNode {
   // ahead of the text without it being part of the shape's editable content
   // (see shape.ts's TextShape.bulletMarker for why).
   bulletMarker?: string;
+  // For a "polygon" kind: vertices as fractions (0..1) of this LayoutNode's
+  // own width/height, forwarded verbatim to PolygonShape.points (see
+  // shape.ts) - see pyramidChart.ts for how the pyramid taper is computed.
+  points?: Point[];
+  // For a "line" kind: false renders a solid rule (see style.ts's ruleStyle -
+  // pyramidChart's title/header divider) instead of the default dashed
+  // separator (style.ts's separatorStyle, used by headingBullets/bulletMatrix
+  // and by pyramidChart's own row separators). Undefined behaves as true.
+  dashed?: boolean;
 }
 
 export interface TreeLayoutOptions {

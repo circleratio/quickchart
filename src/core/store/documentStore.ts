@@ -135,6 +135,8 @@ interface DocumentState {
   updateVennSetCount: (blockId: string, setCount: number) => void;
   updateBulletMatrixColumns: (blockId: string, columnHeaders: string[]) => void;
   replaceBulletMatrix: (blockId: string, columnHeaders: string[], newOutline: StructuredBlock["outline"]) => void;
+  updatePyramidChartColumns: (blockId: string, columnHeaders: string[]) => void;
+  updatePyramidChartTitle: (blockId: string, title: string) => void;
 
   // User templates (doc/spec.md §6.4): placing one adds plain shapes (no
   // structured-template linkage) - registering one is pure read + an IPC
@@ -418,6 +420,20 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
 
     replaceBulletMatrix: (blockId, columnHeaders, newOutline) => {
       const next = sync.replaceBulletMatrix(get().document, blockId, columnHeaders, newOutline);
+      change((draft) => {
+        Object.assign(draft, next);
+      });
+    },
+
+    updatePyramidChartColumns: (blockId, columnHeaders) => {
+      const next = sync.updatePyramidChartColumns(get().document, blockId, columnHeaders);
+      change((draft) => {
+        Object.assign(draft, next);
+      });
+    },
+
+    updatePyramidChartTitle: (blockId, title) => {
+      const next = sync.updatePyramidChartTitle(get().document, blockId, title);
       change((draft) => {
         Object.assign(draft, next);
       });

@@ -36,6 +36,29 @@ describe("buildSvgDocument", () => {
     expect(svg).toContain('<rect x="10" y="20" width="100" height="50"');
   });
 
+  it("resolves a polygon shape's fraction points to absolute coordinates", () => {
+    const doc = withShapes([
+      {
+        id: "p1",
+        type: "polygon",
+        x: 10,
+        y: 20,
+        width: 100,
+        height: 50,
+        rotation: 0,
+        style: defaultShapeStyle(),
+        zIndex: 0,
+        points: [
+          { x: 0.5, y: 0 },
+          { x: 1, y: 1 },
+          { x: 0, y: 1 },
+        ],
+      },
+    ]);
+    const svg = buildSvgDocument(doc);
+    expect(svg).toContain('<polygon points="60,20 110,70 10,70"');
+  });
+
   it("escapes text content and shows Japanese text as-is (no mangling)", () => {
     const doc = withShapes([
       {

@@ -2,7 +2,17 @@ import { v4 as uuidv4 } from "uuid";
 import type { Document, OutlineNode, StructuredBlock } from "../model/document";
 import { DEFAULT_LAYER_ID } from "../model/document";
 import type { Shape, ShapeId, TextShape } from "../model/shape";
-import { defaultShapeStyle, getColorTheme, headingStyle, labelStyle, outlineStyle, resolveColorSlot, separatorStyle } from "../model/style";
+import {
+  contrastTextColor,
+  defaultShapeStyle,
+  getColorTheme,
+  headingStyle,
+  labelStyle,
+  outlineStyle,
+  resolveColorSlot,
+  ruleStyle,
+  separatorStyle,
+} from "../model/style";
 import type { ShapeStyle } from "../model/style";
 import { layoutPyramid } from "./pyramid";
 import { layoutLogicTree } from "./logicTree";
@@ -11,6 +21,7 @@ import type { MatrixAxisParams } from "./matrix";
 import { layoutVenn, VENN_MAX_SETS, VENN_MIN_SETS } from "./venn";
 import { layoutHeadingBullets } from "./headingBullets";
 import { layoutBulletMatrix } from "./bulletMatrix";
+import { layoutPyramidChart } from "./pyramidChart";
 import type { LayoutNode } from "./treeLayout";
 
 // All functions here take a plain Document and return a new plain Document -
@@ -24,7 +35,13 @@ import type { LayoutNode } from "./treeLayout";
 // the pyramid/logicTree incremental add/delete path (see regenerateBlockShapes
 // below and doc/spec.md §6.2.1/§6.2.2).
 function isFullyRelayoutedPattern(pattern: StructuredBlock["pattern"]): boolean {
-  return pattern === "matrix" || pattern === "venn" || pattern === "headingBullets" || pattern === "bulletMatrix";
+  return (
+    pattern === "matrix" ||
+    pattern === "venn" ||
+    pattern === "headingBullets" ||
+    pattern === "bulletMatrix" ||
+    pattern === "pyramidChart"
+  );
 }
 
 function vennSetCount(params: Record<string, unknown>): number {
@@ -40,6 +57,18 @@ function bulletMatrixColumnHeaders(params: Record<string, unknown>): string[] {
   return Array.isArray(raw) ? raw.filter((h): h is string => typeof h === "string") : [];
 }
 
+// pyramidChart's table column headers (doc/spec.md §6.2.5) - same shape and
+// reasoning as bulletMatrix's above, just a separate function since the two
+// patterns' params are otherwise unrelated.
+function pyramidChartColumnHeaders(params: Record<string, unknown>): string[] {
+  const raw = params.columnHeaders;
+  return Array.isArray(raw) ? raw.filter((h): h is string => typeof h === "string") : [];
+}
+
+function pyramidChartTitle(params: Record<string, unknown>): string {
+  return typeof params.title === "string" ? params.title : "";
+}
+
 function layoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[], params: Record<string, unknown> = {}): LayoutNode[] {
   const nodes = rawLayoutFor(pattern, outline, params);
   // venn.ts's circle-centered layout, and bulletMatrix's column headers
@@ -48,7 +77,9 @@ function layoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[], 
   // always-non-negative margin for axis labels (AXIS_MARGIN_X/Y) that must
   // stay intact, and pyramid/logicTree's cursor-based placement already
   // starts at (0, 0), so normalizing them here would be a no-op at best.
-  return pattern === "venn" || pattern === "bulletMatrix" ? normalizeToOrigin(nodes) : nodes;
+  return pattern === "venn" || pattern === "bulletMatrix" || pattern === "pyramidChart"
+    ? normalizeToOrigin(nodes)
+    : nodes;
 }
 
 function rawLayoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[], params: Record<string, unknown>): LayoutNode[] {
@@ -65,6 +96,8 @@ function rawLayoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[
       return layoutHeadingBullets(outline);
     case "bulletMatrix":
       return layoutBulletMatrix(outline, bulletMatrixColumnHeaders(params));
+    case "pyramidChart":
+      return layoutPyramidChart(outline, pyramidChartColumnHeaders(params), pyramidChartTitle(params));
     default:
       return [];
   }
@@ -97,10 +130,12 @@ function styleFor(themeId: string, layoutNode: LayoutNode): ShapeStyle {
     layoutNode.kind === "ellipse" || layoutNode.kind === "rect"
       ? outlineStyle(themeId)
       : layoutNode.kind === "line"
-        ? separatorStyle(themeId)
+        ? layoutNode.dashed === false
+          ? ruleStyle(themeId)
+          : separatorStyle(themeId)
         : layoutNode.kind === "label"
           ? labelStyle(themeId, layoutNode.fontSize)
-          : layoutNode.kind === "heading"
+          : layoutNode.kind === "heading" || layoutNode.kind === "polygon"
             ? headingStyle(themeId, layoutNode.fontSize, layoutNode.fillColorSlot)
             : defaultShapeStyle(themeId);
   return {
@@ -109,6 +144,9 @@ function styleFor(themeId: string, layoutNode: LayoutNode): ShapeStyle {
     ...(layoutNode.italic ? { fontStyle: "italic" as const } : {}),
     ...(layoutNode.underline ? { textDecoration: "underline" as const } : {}),
     ...(layoutNode.textColorSlot !== undefined ? { textColor: resolveColorSlot(theme, layoutNode.textColorSlot) } : {}),
+    ...(layoutNode.contrastBgColorSlot !== undefined
+      ? { textColor: contrastTextColor(theme, resolveColorSlot(theme, layoutNode.contrastBgColorSlot)) }
+      : {}),
   };
 }
 
@@ -251,8 +289,25 @@ function emptyBulletMatrixRow(block: StructuredBlock): OutlineNode {
   };
 }
 
+// A pyramidChart row (root outline node) needs one "scale" child plus one
+// empty cell per params.columnHeaders up front, for the same reason
+// emptyBulletMatrixRow above does - see pyramidChart.ts for the fixed
+// child[0]=scale, child[1..]=columnHeaders position mapping.
+function emptyPyramidChartRow(block: StructuredBlock): OutlineNode {
+  return {
+    id: uuidv4(),
+    text: "",
+    children: [
+      { id: uuidv4(), text: "", children: [] },
+      ...pyramidChartColumnHeaders(block.params).map(() => ({ id: uuidv4(), text: "", children: [] })),
+    ],
+  };
+}
+
 function newRootNode(block: StructuredBlock): OutlineNode {
-  return block.pattern === "bulletMatrix" ? emptyBulletMatrixRow(block) : { id: uuidv4(), text: "", children: [] };
+  if (block.pattern === "bulletMatrix") return emptyBulletMatrixRow(block);
+  if (block.pattern === "pyramidChart") return emptyPyramidChartRow(block);
+  return { id: uuidv4(), text: "", children: [] };
 }
 
 export function addFirstOutlineNode(doc: Document, blockId: string): Document {
@@ -515,6 +570,38 @@ export function replaceBulletMatrix(doc: Document, blockId: string, columnHeader
   return regenerateBlockShapes(doc, updatedBlock, newOutline);
 }
 
+// Changes pyramidChart's column count/labels (doc/spec.md §6.2.5). Mirrors
+// updateBulletMatrixColumns above, except column 0 of each row's children is
+// reserved for the "scale" label (pyramidChart.ts) and always kept, with the
+// remaining children resized to match `columnHeaders` by position.
+export function updatePyramidChartColumns(doc: Document, blockId: string, columnHeaders: string[]): Document {
+  const block = findBlock(doc, blockId);
+  if (!block || block.pattern !== "pyramidChart") return doc;
+  const newOutline = block.outline.map((row) => ({
+    ...row,
+    children: [
+      row.children[0] ?? { id: uuidv4(), text: "", children: [] },
+      ...columnHeaders.map((_, i) => row.children[1 + i] ?? { id: uuidv4(), text: "", children: [] }),
+    ],
+  }));
+  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, columnHeaders } };
+  return regenerateBlockShapes(doc, updatedBlock, newOutline);
+}
+
+// pyramidChart's overall title (doc/spec.md §6.2.5) isn't tied to an outline
+// node, same reasoning as matrix's axis labels/bulletMatrix's column headers.
+// Unlike updateMatrixAxisLabels' incremental clearance-shifting logic, a
+// title change just regenerates the whole (cheap, single-block) diagram -
+// there's no equivalent "existing shapes must not overlap the new label"
+// concern here since the title always sits outside/above every generated
+// shape (pyramidChart.ts).
+export function updatePyramidChartTitle(doc: Document, blockId: string, title: string): Document {
+  const block = findBlock(doc, blockId);
+  if (!block || block.pattern !== "pyramidChart") return doc;
+  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, title } };
+  return regenerateBlockShapes(doc, updatedBlock, block.outline);
+}
+
 // Matrix axis labels (params._axisShapeIds) sit outside the grid, deliberately
 // at negative offsets from it (layoutMatrixAxisLabels), and are excluded here
 // so they can never pull the computed origin - and so every later
@@ -533,7 +620,9 @@ function originOfBlock(doc: Document, block: StructuredBlock): { x: number; y: n
 // Recomputes every generated shape's position from a fresh layout of
 // `newOutline`, keeping each shape's own id (and any style customization) by
 // matching on templateNodeIds. Used after restructuring (indent/outdent/move)
-// where the tree shape changed but no nodes were added or removed.
+// where the tree shape changed but no nodes were added or removed - except
+// pyramidChart, which relayoutOrRegenerate (below) routes to
+// regenerateBlockShapes instead.
 function relayoutBlock(doc: Document, block: StructuredBlock, newOutline: OutlineNode[]): Document {
   const origin = originOfBlock(doc, block);
   const layoutByNodeId = new Map<string, LayoutNode>();
@@ -553,6 +642,22 @@ function relayoutBlock(doc: Document, block: StructuredBlock, newOutline: Outlin
   return withBlock({ ...doc, shapes }, block.id, (b) => ({ ...b, outline: newOutline }));
 }
 
+// pyramidChart's own band shapes (pyramidChart.ts's "polygon" kind) taper
+// based on a level's INDEX among its siblings, not just its own content -
+// unlike every other pattern's shapes, whose own width/height/points never
+// depend on position. relayoutBlock (below) only ever copies a fresh
+// layoutNode's x/y onto the existing shape, which is enough to reposition
+// every other pattern correctly but would leave a reordered pyramidChart
+// band's taper stale (still shaped for its OLD index). Routing it through a
+// full regenerateBlockShapes instead sidesteps that - the same tradeoff
+// (structural edits reset any manual per-shape style/id) every other
+// isFullyRelayoutedPattern already accepts for add/delete.
+function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline: OutlineNode[]): Document {
+  return block.pattern === "pyramidChart"
+    ? regenerateBlockShapes(doc, block, newOutline)
+    : relayoutBlock(doc, block, newOutline);
+}
+
 export function indentOutlineNode(doc: Document, blockId: string, nodeId: string): Document {
   const block = findBlock(doc, blockId);
   if (!block) return doc;
@@ -565,7 +670,7 @@ export function indentOutlineNode(doc: Document, blockId: string, nodeId: string
   let newOutline = updateChildren(block.outline, loc.parentId, (children) => children.filter((_, i) => i !== loc.index));
   newOutline = updateChildren(newOutline, newParentId, (children) => [...children, node]);
 
-  return relayoutBlock(doc, block, newOutline);
+  return relayoutOrRegenerate(doc, block, newOutline);
 }
 
 export function outdentOutlineNode(doc: Document, blockId: string, nodeId: string): Document {
@@ -584,7 +689,7 @@ export function outdentOutlineNode(doc: Document, blockId: string, nodeId: strin
     return [...children.slice(0, parentIndex + 1), node, ...children.slice(parentIndex + 1)];
   });
 
-  return relayoutBlock(doc, block, newOutline);
+  return relayoutOrRegenerate(doc, block, newOutline);
 }
 
 export function moveOutlineNode(doc: Document, blockId: string, nodeId: string, direction: "up" | "down"): Document {
@@ -601,7 +706,7 @@ export function moveOutlineNode(doc: Document, blockId: string, nodeId: string, 
     return copy;
   });
 
-  return relayoutBlock(doc, block, newOutline);
+  return relayoutOrRegenerate(doc, block, newOutline);
 }
 
 // Bulk replace (paste import, doc/spec.md §6.1): discards every shape this
@@ -645,14 +750,16 @@ function regenerateBlockShapes(doc: Document, block: StructuredBlock, newOutline
           ? { ...base, type: "rect", style }
           : layoutNode.kind === "line"
             ? { ...base, type: "line", style }
-            : {
-                ...base,
-                type: "text",
-                style,
-                content: layoutNode.text,
-                align: layoutNode.align ?? "center",
-                bulletMarker: layoutNode.bulletMarker,
-              };
+            : layoutNode.kind === "polygon"
+              ? { ...base, type: "polygon", style, points: layoutNode.points ?? [] }
+              : {
+                  ...base,
+                  type: "text",
+                  style,
+                  content: layoutNode.text,
+                  align: layoutNode.align ?? "center",
+                  bulletMarker: layoutNode.bulletMarker,
+                };
     shapes[shape.id] = shape;
     newShapeIds.push(shape.id);
   }

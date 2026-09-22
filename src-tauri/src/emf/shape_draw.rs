@@ -96,6 +96,23 @@ pub struct LineCommand {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct PolygonCommand {
+    pub points: Vec<(f64, f64)>,
+    // Rotation center, kept separate from the (already-absolute) points above
+    // so with_rotation (writer.rs) can rotate around the shape's own
+    // bounding-box center the same way draw_box does - mirrors ShapeRenderer.tsx's
+    // rotationTransform, which likewise rotates around x+width/2, y+height/2
+    // regardless of shape type.
+    pub cx: f64,
+    pub cy: f64,
+    pub rotation: f64,
+    pub fill: Rgb,
+    pub stroke: Rgb,
+    pub stroke_width: f64,
+    pub dashed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct TextCommand {
     pub x: f64,
     pub y: f64,
@@ -118,6 +135,7 @@ pub enum DrawCommand {
     Ellipse(BoxCommand),
     Line(LineCommand),
     Text(TextCommand),
+    Polygon(PolygonCommand),
 }
 
 fn anchor_position(shape: &ShapeDto, anchor: &str) -> (f64, f64) {
@@ -205,6 +223,29 @@ pub fn build_draw_commands(shapes: &[ShapeDto]) -> Vec<DrawCommand> {
                     dashed: shape.style.stroke_dasharray.is_some(),
                     arrow_head: shape.kind == "arrow",
                 }));
+            }
+            // pyramidChart's pyramid-slice bands (src/core/model/shape.ts's
+            // PolygonShape) store `points` as fractions (0..1) of the shape's
+            // own bounding box, same reasoning as ShapeRenderer.tsx's
+            // polygonPoints() - resolved to absolute coordinates here, once,
+            // rather than carrying the fraction/box split into DrawCommand.
+            "polygon" => {
+                if let Some(points) = &shape.points {
+                    let abs_points = points
+                        .iter()
+                        .map(|p| (shape.x + p.x * shape.width, shape.y + p.y * shape.height))
+                        .collect();
+                    commands.push(DrawCommand::Polygon(PolygonCommand {
+                        points: abs_points,
+                        cx: shape.x + shape.width / 2.0,
+                        cy: shape.y + shape.height / 2.0,
+                        rotation: shape.rotation,
+                        fill: parse_hex_color(&shape.style.fill),
+                        stroke: parse_hex_color(&shape.style.stroke),
+                        stroke_width: shape.style.stroke_width,
+                        dashed: shape.style.stroke_dasharray.is_some(),
+                    }));
+                }
             }
             "text" => commands.push(DrawCommand::Text(TextCommand {
                 x: shape.x,
@@ -354,6 +395,31 @@ mod tests {
             }
             other => panic!("expected Text, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn converts_a_polygon_shapes_fraction_points_to_absolute_coordinates() {
+        let mut shape = base_shape("p", "polygon", 10.0, 20.0, 100.0, 50.0);
+        // A triangle: apex at the top-center, base spanning the full width.
+        shape.points = Some(vec![
+            PointDto { x: 0.5, y: 0.0 },
+            PointDto { x: 1.0, y: 1.0 },
+            PointDto { x: 0.0, y: 1.0 },
+        ]);
+        let commands = build_draw_commands(&[shape]);
+        match &commands[0] {
+            DrawCommand::Polygon(p) => {
+                assert_eq!(p.points, vec![(60.0, 20.0), (110.0, 70.0), (10.0, 70.0)]);
+                assert_eq!((p.cx, p.cy), (60.0, 45.0));
+            }
+            other => panic!("expected Polygon, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn drops_a_polygon_shape_with_no_points_instead_of_erroring() {
+        let shape = base_shape("p", "polygon", 0.0, 0.0, 10.0, 10.0);
+        assert_eq!(build_draw_commands(&[shape]), vec![]);
     }
 
     #[test]

@@ -66,6 +66,29 @@ export function resolveColorSlot(theme: ColorTheme, slot: ThemeColorSlot): strin
   return slot === "accent" ? theme.accent : theme.primary[slot];
 }
 
+// WCAG relative luminance (https://www.w3.org/TR/WCAG21/#dfn-relative-luminance)
+// of a "#rrggbb" color, in [0, 1].
+function relativeLuminance(hex: string): number {
+  const h = hex.replace("#", "");
+  const channels = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
+  const [r, g, b] = channels.map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+// Picks whichever of the theme's two text colors reads legibly against
+// `backgroundHex` - white (`textLight`) on a dark background, the theme's
+// usual dark text (`textDark`) on a light one. Used where a label sits
+// directly on top of a shape whose own fill varies (pyramidChart's item-
+// name/scale labels over their pyramid band, which goes from a dark shade at
+// the apex to a light one at the base - see pyramidChart.ts's bandColorSlot
+// and treeLayout.ts's contrastBgColorSlot). Unlike headingStyle's
+// unconditional `textColor: theme.textLight` (safe there because every
+// current heading fill is one of the theme's darker shades), this checks the
+// actual color so it stays correct as the background darkness varies.
+export function contrastTextColor(theme: ColorTheme, backgroundHex: string): string {
+  return relativeLuminance(backgroundHex) < 0.5 ? theme.textLight : theme.textDark;
+}
+
 export function defaultShapeStyle(themeId: string = DEFAULT_COLOR_THEME_ID): ShapeStyle {
   const theme = getColorTheme(themeId);
   return {
@@ -141,4 +164,15 @@ export function headingStyle(
 export function separatorStyle(themeId: string = DEFAULT_COLOR_THEME_ID): ShapeStyle {
   const theme = getColorTheme(themeId);
   return { fill: "none", stroke: theme.primary[2], strokeWidth: 2, strokeDasharray: "4 3" };
+}
+
+// Solid rule, for a divider that reads as a structural boundary rather than a
+// subtle row separator (pyramidChart's line under its title, between the
+// title and the column-header row - see pyramidChart.ts). Same dark tone as
+// outlineStyle, kept as its own named function since the two express
+// different roles (a shape's own border vs. a standalone divider line) even
+// though their values currently coincide.
+export function ruleStyle(themeId: string = DEFAULT_COLOR_THEME_ID): ShapeStyle {
+  const theme = getColorTheme(themeId);
+  return { fill: "none", stroke: theme.primary[0], strokeWidth: 2 };
 }

@@ -16,6 +16,7 @@ const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
   venn: "ベン図",
   headingBullets: "見出し付き箇条書き",
   bulletMatrix: "箇条書きマトリクス",
+  pyramidChart: "ピラミッド図",
 };
 
 const BULLET_MATRIX_IMPORT_PLACEHOLDER =
@@ -31,6 +32,15 @@ const BULLET_MATRIX_IMPORT_PLACEHOLDER =
   "  - 詳細";
 
 function bulletMatrixColumnHeaders(params: Record<string, unknown>): string[] {
+  const raw = params.columnHeaders;
+  return Array.isArray(raw) ? raw.filter((h): h is string => typeof h === "string") : [];
+}
+
+// pyramidChart shares bulletMatrix's params.columnHeaders shape (doc/spec.md
+// §6.2.5) - kept as its own function since the two patterns are otherwise
+// unrelated in this file (separate PATTERN_LABEL entries, separate row
+// prefill rules, etc.).
+function pyramidChartColumnHeaders(params: Record<string, unknown>): string[] {
   const raw = params.columnHeaders;
   return Array.isArray(raw) ? raw.filter((h): h is string => typeof h === "string") : [];
 }
@@ -56,6 +66,8 @@ export function StructuredTextPanel() {
   const updateVennSetCount = useDocumentStore((s) => s.updateVennSetCount);
   const updateBulletMatrixColumns = useDocumentStore((s) => s.updateBulletMatrixColumns);
   const replaceBulletMatrix = useDocumentStore((s) => s.replaceBulletMatrix);
+  const updatePyramidChartColumns = useDocumentStore((s) => s.updatePyramidChartColumns);
+  const updatePyramidChartTitle = useDocumentStore((s) => s.updatePyramidChartTitle);
 
   const activeBlockId = useStructuredEditorStore((s) => s.activeBlockId);
   const setActiveBlockId = useStructuredEditorStore((s) => s.setActiveBlockId);
@@ -104,6 +116,21 @@ export function StructuredTextPanel() {
           columnHeaders={bulletMatrixColumnHeaders(block.params)}
           onCommit={(headers) => updateBulletMatrixColumns(block.id, headers)}
         />
+      )}
+
+      {block.pattern === "pyramidChart" && (
+        <>
+          <PyramidChartTitleInput
+            key={`${block.id}-title`}
+            title={typeof block.params.title === "string" ? block.params.title : ""}
+            onCommit={(title) => updatePyramidChartTitle(block.id, title)}
+          />
+          <BulletMatrixColumnInputs
+            key={`${block.id}-columns`}
+            columnHeaders={pyramidChartColumnHeaders(block.params)}
+            onCommit={(headers) => updatePyramidChartColumns(block.id, headers)}
+          />
+        </>
       )}
 
       {block.outline.length === 0 ? (
@@ -190,6 +217,23 @@ function MatrixAxisLabelInputs({
       <label>
         縦軸
         <input value={y} onChange={(e) => setY(e.target.value)} onBlur={() => onCommit({ axisYLabel: y })} />
+      </label>
+    </div>
+  );
+}
+
+// pyramidChart's overall title (doc/spec.md §6.2.5) - a single field, unlike
+// MatrixAxisLabelInputs' pair, so it reuses that component's styling
+// (.matrix-axis-labels) rather than needing its own CSS class.
+function PyramidChartTitleInput({ title, onCommit }: { title: string; onCommit: (title: string) => void }) {
+  const [value, setValue] = useState(title);
+
+  return (
+    <div className="matrix-axis-labels">
+      <h4>タイトル</h4>
+      <label>
+        見出し
+        <input value={value} onChange={(e) => setValue(e.target.value)} onBlur={() => onCommit(value)} />
       </label>
     </div>
   );
@@ -304,15 +348,24 @@ function OutlineRow({
   // removing/adding columns goes through BulletMatrixColumnInputs instead).
   // Only its title/detail children (added via "+子") are real content.
   const isBulletMatrixCell = pattern === "bulletMatrix" && depth === 1;
+  // pyramidChart's depth-1 nodes (child[0]="regbo/scale", child[1..]=table
+  // cells) are position-aligned the same way (see pyramidChart.ts), except -
+  // unlike a bulletMatrix cell - each one IS a leaf value with its own text,
+  // so it keeps a real input instead of BulletMatrixColumnInputs' static
+  // placeholder; only reordering/deleting/nesting it (which would shift every
+  // later sibling's position) is disallowed.
+  const isPyramidChartValue = pattern === "pyramidChart" && depth === 1;
+  const isFixedPositionChild = isBulletMatrixCell || isPyramidChartValue;
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Tab") {
       e.preventDefault();
+      if (isPyramidChartValue) return;
       if (e.shiftKey) outdentOutlineNode(blockId, node.id);
       else indentOutlineNode(blockId, node.id);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (disableAddSibling) return;
+      if (disableAddSibling || isPyramidChartValue) return;
       addOutlineSibling(blockId, node.id);
       const block = useDocumentStore.getState().document.structuredBlocks.find((b) => b.id === blockId);
       const newNodeId = block ? findNextSiblingId(block.outline, node.id) : null;
@@ -334,7 +387,7 @@ function OutlineRow({
             onKeyDown={handleKeyDown}
           />
         )}
-        {!isBulletMatrixCell && (
+        {!isFixedPositionChild && (
           <>
             <button type="button" title="上へ移動" onClick={() => moveOutlineNode(blockId, node.id, "up")}>
               ↑
@@ -344,10 +397,12 @@ function OutlineRow({
             </button>
           </>
         )}
-        <button type="button" title="子を追加" onClick={() => addOutlineChild(blockId, node.id)}>
-          +子
-        </button>
-        {!isBulletMatrixCell && (
+        {!isPyramidChartValue && (
+          <button type="button" title="子を追加" onClick={() => addOutlineChild(blockId, node.id)}>
+            +子
+          </button>
+        )}
+        {!isFixedPositionChild && (
           <button type="button" title="削除" onClick={() => deleteOutlineNode(blockId, node.id)}>
             ×
           </button>

@@ -48,6 +48,10 @@ function renderShape(shape: Shape, shapes: Record<ShapeId, Shape>): string {
       return `<ellipse cx="${shape.x + shape.width / 2}" cy="${shape.y + shape.height / 2}" rx="${shape.width / 2}" ry="${shape.height / 2}" fill="${shape.style.fill}" stroke="${shape.style.stroke}" stroke-width="${shape.style.strokeWidth}"${dasharray}${rotationAttr(shape)} />`;
     case "line":
       return `<line x1="${shape.x}" y1="${shape.y}" x2="${shape.x + shape.width}" y2="${shape.y + shape.height}" stroke="${shape.style.stroke}" stroke-width="${Math.max(shape.style.strokeWidth, 2)}"${dasharray}${rotationAttr(shape)} />`;
+    case "polygon": {
+      const points = shape.points.map((p) => `${shape.x + p.x * shape.width},${shape.y + p.y * shape.height}`).join(" ");
+      return `<polygon points="${points}" fill="${shape.style.fill}" stroke="${shape.style.stroke}" stroke-width="${shape.style.strokeWidth}"${dasharray}${rotationAttr(shape)} />`;
+    }
     case "text": {
       const x = textAnchorX(shape);
       const y = shape.y + shape.height / 2;

@@ -4,7 +4,7 @@ import { defaultShapeStyle } from "./style";
 
 export type ShapeId = string;
 
-export type ShapeType = "rect" | "ellipse" | "line" | "arrow" | "connector" | "text";
+export type ShapeType = "rect" | "ellipse" | "line" | "arrow" | "connector" | "text" | "polygon";
 
 export interface Point {
   x: number;
@@ -33,6 +33,17 @@ export interface RectShape extends ShapeBase {
 
 export interface EllipseShape extends ShapeBase {
   type: "ellipse";
+}
+
+// An arbitrary closed polygon (pyramidChart's pyramid-slice bands - see
+// templates/pyramidChart.ts). `points` are fractions (0..1) of the shape's own
+// x/y/width/height bounding box rather than absolute coordinates, so the usual
+// generic move/resize handling (computeAnchoredResize in layout/resize.ts,
+// which only ever touches x/y/width/height) scales the polygon along with its
+// box for free instead of needing polygon-specific resize logic.
+export interface PolygonShape extends ShapeBase {
+  type: "polygon";
+  points: Point[];
 }
 
 // A plain line's two endpoints are (x, y) and (x + width, y + height); it has no
@@ -65,7 +76,7 @@ export interface TextShape extends ShapeBase {
   bulletMarker?: string;
 }
 
-export type Shape = RectShape | EllipseShape | LineShape | ConnectorShape | TextShape;
+export type Shape = RectShape | EllipseShape | LineShape | ConnectorShape | TextShape | PolygonShape;
 
 // A patch may set any field valid on any concrete Shape variant, not just the
 // fields common to all of them (which is all a naive Partial<Shape> would
@@ -78,7 +89,8 @@ export type Shape = RectShape | EllipseShape | LineShape | ConnectorShape | Text
 export type ShapePatch = Partial<ShapeBase> &
   Partial<Pick<RectShape, "cornerRadius">> &
   Partial<Pick<ConnectorShape, "fromShapeId" | "fromAnchor" | "toShapeId" | "toAnchor" | "points">> &
-  Partial<Pick<TextShape, "content" | "align">>;
+  Partial<Pick<TextShape, "content" | "align">> &
+  Partial<Pick<PolygonShape, "points">>;
 
 export type PlaceableShapeType = "rect" | "ellipse" | "line" | "text";
 

@@ -1,5 +1,5 @@
 import type { PointerEvent } from "react";
-import type { Shape, TextShape } from "../../core/model/shape";
+import type { PolygonShape, Shape, TextShape } from "../../core/model/shape";
 
 interface ShapeRendererProps {
   shape: Shape;
@@ -59,6 +59,19 @@ export function ShapeRenderer({ shape, selected, onPointerDown, elRef }: ShapeRe
           y2={shape.y + shape.height}
           stroke={stroke}
           strokeWidth={Math.max(strokeWidth, 2)}
+          strokeDasharray={shape.style.strokeDasharray}
+          transform={transform}
+          onPointerDown={onPointerDown}
+        />
+      );
+    case "polygon":
+      return (
+        <polygon
+          ref={elRef}
+          points={polygonPoints(shape)}
+          fill={shape.style.fill}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
           strokeDasharray={shape.style.strokeDasharray}
           transform={transform}
           onPointerDown={onPointerDown}
@@ -154,6 +167,12 @@ function TextShapeRenderer({
       </text>
     </g>
   );
+}
+
+// Resolves a PolygonShape's fraction-based `points` (see shape.ts) against its
+// own bounding box into an SVG `points` attribute string.
+function polygonPoints(shape: PolygonShape): string {
+  return shape.points.map((p) => `${shape.x + p.x * shape.width},${shape.y + p.y * shape.height}`).join(" ");
 }
 
 function rotationTransform(shape: Shape): string | undefined {
