@@ -142,6 +142,7 @@ interface DocumentState {
   updateScheduleMilestones: (blockId: string, milestones: Milestone[]) => void;
   updateScheduleConnections: (blockId: string, connections: Record<string, string>) => void;
   updateFlowScheduleTitle: (blockId: string, title: string) => void;
+  updateFlowScheduleHorizontalTitle: (blockId: string, title: string) => void;
 
   // User templates (doc/spec.md §6.4): placing one adds plain shapes (no
   // structured-template linkage) - registering one is pure read + an IPC
@@ -446,6 +447,13 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
 
     updateFlowScheduleTitle: (blockId, title) => {
       const next = sync.updateFlowScheduleTitle(get().document, blockId, title);
+      change((draft) => {
+        Object.assign(draft, next);
+      });
+    },
+
+    updateFlowScheduleHorizontalTitle: (blockId, title) => {
+      const next = sync.updateFlowScheduleHorizontalTitle(get().document, blockId, title);
       change((draft) => {
         Object.assign(draft, next);
       });

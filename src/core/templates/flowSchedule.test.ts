@@ -57,17 +57,19 @@ describe("layoutFlowSchedule", () => {
     expect(separators.every((s) => s.nodeIds.length === 0)).toBe(true);
   });
 
-  it("renders an untracked, accent-colored, centered title with no flanking rules when title is blank", () => {
+  it("renders no title (and no flanking rules) when the title is blank", () => {
     const outline = [node("r1", "1")];
     const layout = layoutFlowSchedule(outline, "  ");
-    expect(layout.some((l) => l.textColorSlot === "accent")).toBe(false);
+    expect(layout.some((l) => l.kind === "label" && l.align === "center" && l.fontSize === 22)).toBe(false);
   });
 
   it("renders the title flanked by two dashed rules, and pushes the first row below it", () => {
     const withTitle = layoutFlowSchedule([node("r1", "1")], "フロースケジュール（縦）");
     const withoutTitle = layoutFlowSchedule([node("r1", "1")], "");
     const title = withTitle.find((l) => l.text === "フロースケジュール（縦）")!;
-    expect(title.textColorSlot).toBe("accent");
+    // No textColorSlot override - it reads the same primary color as every
+    // other generated label (labelStyle's default), not a contrasting accent.
+    expect(title.textColorSlot).toBeUndefined();
     expect(title.align).toBe("center");
     expect(title.nodeIds).toEqual([]);
 

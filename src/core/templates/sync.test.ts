@@ -724,6 +724,59 @@ describe("flowSchedule blocks (fully-relayouted pattern)", () => {
   });
 });
 
+describe("flowScheduleHorizontal blocks (fully-relayouted pattern)", () => {
+  function flowScheduleHorizontalBlock(doc: Document) {
+    const { document, blockId } = sync.addEmptyStructuredBlock(doc, "flowScheduleHorizontal");
+    return { document: sync.addFirstOutlineNode(document, blockId), blockId };
+  }
+
+  it("generates a rounded-corner card, an untracked number, and a label per step", () => {
+    const { document, blockId } = flowScheduleHorizontalBlock(createEmptyDocument());
+    const stepId = nodeId(document, blockId, 0);
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    const card = shapes.find((s) => s.type === "rect")!;
+    expect(card.type === "rect" && card.cornerRadius).toBeGreaterThan(0);
+    expect(shapes.some((s) => s.type === "text" && s.content === "01" && s.templateNodeIds?.length === 0)).toBe(true);
+    const label = shapes.find((s) => s.type === "text" && s.templateNodeIds?.includes(stepId));
+    expect(label).toBeDefined();
+  });
+
+  it("updateFlowScheduleHorizontalTitle regenerates a title label shape with the new text", () => {
+    const { document, blockId } = flowScheduleHorizontalBlock(createEmptyDocument());
+    const next = sync.updateFlowScheduleHorizontalTitle(document, blockId, "フロースケジュール（横）");
+    const shapes = next.structuredBlocks[0].generatedShapeIds.map((id) => next.shapes[id]);
+    const title = shapes.find((s) => s.type === "text" && s.content === "フロースケジュール（横）");
+    expect(title).toBeDefined();
+  });
+
+  it("editing a step's text patches its label shape's content in place without moving any shape", () => {
+    const { document, blockId } = flowScheduleHorizontalBlock(createEmptyDocument());
+    const stepId = nodeId(document, blockId, 0);
+
+    const before = document.structuredBlocks[0].generatedShapeIds.map((id) => ({ ...document.shapes[id] }));
+    const after = sync.updateOutlineNodeText(document, blockId, stepId, "お問い合わせ");
+    const afterShapes = after.structuredBlocks[0].generatedShapeIds.map((id) => after.shapes[id]);
+
+    expect(afterShapes.map((s) => ({ x: s.x, y: s.y }))).toEqual(before.map((s) => ({ x: s.x, y: s.y })));
+    const label = afterShapes.find((s) => s.type === "text" && s.templateNodeIds?.includes(stepId));
+    expect(label?.type === "text" && label.content).toBe("お問い合わせ");
+  });
+
+  it("reordering steps (move up/down) regenerates each card's number for its new index", () => {
+    let { document, blockId } = flowScheduleHorizontalBlock(createEmptyDocument());
+    const firstId = nodeId(document, blockId, 0);
+    document = sync.addOutlineSibling(document, blockId, firstId);
+    const secondId = document.structuredBlocks[0].outline[1].id;
+
+    document = sync.moveOutlineNode(document, blockId, secondId, "up");
+
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    const movedCard = shapes.find((s) => s.type === "rect" && s.templateNodeIds?.includes(secondId))!;
+    const pushedCard = shapes.find((s) => s.type === "rect" && s.templateNodeIds?.includes(firstId))!;
+    expect(movedCard.x).toBeLessThan(pushedCard.x);
+  });
+});
+
 describe("schedule blocks (fully-relayouted pattern)", () => {
   function scheduleBlock(doc: Document) {
     const { document, blockId } = sync.addEmptyStructuredBlock(doc, "schedule");

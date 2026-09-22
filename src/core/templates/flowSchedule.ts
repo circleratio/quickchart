@@ -68,7 +68,12 @@ export function layoutFlowSchedule(outline: OutlineNode[], title: string): Layou
       align: "center",
       fontWeight: "bold",
       fontSize: TITLE_FONT_SIZE,
-      textColorSlot: "accent",
+      // No textColorSlot override: labelStyle's own default (theme.primary[0])
+      // already matches the reference image's title color, which reads as the
+      // SAME blue as every row heading below it - not a contrasting "accent"
+      // callout color. (An earlier version of this file used `"accent"`,
+      // which resolves to an orange in the default "Neutral Blue" theme -
+      // wrong on inspection, fixed here.)
     });
 
     // Dashed rules filling the rest of the title row on either side of the

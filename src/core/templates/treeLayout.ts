@@ -88,6 +88,12 @@ export interface LayoutNode {
   // schedule.ts's simplified dependency arrows (doc/spec.md §6.2.6).
   // Undefined/false behaves as a plain line.
   arrowhead?: boolean;
+  // For a "rect" kind: rounded corner radius, forwarded verbatim to
+  // RectShape.cornerRadius (see shape.ts) - flowScheduleHorizontal's step
+  // cards (doc/spec.md §6.2.10), the first template shape to use this (every
+  // other "rect" so far, e.g. matrix's quadrant background, is
+  // square-cornered). Undefined/0 behaves as a plain square corner.
+  cornerRadius?: number;
 }
 
 export interface TreeLayoutOptions {

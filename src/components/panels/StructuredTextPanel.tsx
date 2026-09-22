@@ -22,6 +22,7 @@ const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
   verticalFlow: "フロー図（縦型）",
   horizontalFlow: "フロー図（横型）",
   flowSchedule: "フロースケジュール（縦）",
+  flowScheduleHorizontal: "フロースケジュール（横）",
 };
 
 const BULLET_MATRIX_IMPORT_PLACEHOLDER =
@@ -74,6 +75,7 @@ export function StructuredTextPanel() {
   const updatePyramidChartColumns = useDocumentStore((s) => s.updatePyramidChartColumns);
   const updatePyramidChartTitle = useDocumentStore((s) => s.updatePyramidChartTitle);
   const updateFlowScheduleTitle = useDocumentStore((s) => s.updateFlowScheduleTitle);
+  const updateFlowScheduleHorizontalTitle = useDocumentStore((s) => s.updateFlowScheduleHorizontalTitle);
 
   const activeBlockId = useStructuredEditorStore((s) => s.activeBlockId);
   const setActiveBlockId = useStructuredEditorStore((s) => s.setActiveBlockId);
@@ -162,6 +164,14 @@ export function StructuredTextPanel() {
           key={`${block.id}-title`}
           title={typeof block.params.title === "string" ? block.params.title : ""}
           onCommit={(title) => updateFlowScheduleTitle(block.id, title)}
+        />
+      )}
+
+      {block.pattern === "flowScheduleHorizontal" && (
+        <PyramidChartTitleInput
+          key={`${block.id}-title`}
+          title={typeof block.params.title === "string" ? block.params.title : ""}
+          onCommit={(title) => updateFlowScheduleHorizontalTitle(block.id, title)}
         />
       )}
 
@@ -255,10 +265,11 @@ function MatrixAxisLabelInputs({
 }
 
 // A single title field - pyramidChart's overall title (doc/spec.md §6.2.5)
-// and flowSchedule's (§6.2.9) share this exact shape, so both reuse it rather
-// than each carrying its own near-identical input. Unlike
-// MatrixAxisLabelInputs' pair, it reuses that component's styling
-// (.matrix-axis-labels) rather than needing its own CSS class.
+// and both flowSchedule's (§6.2.9) and flowScheduleHorizontal's (§6.2.10)
+// share this exact shape, so all three reuse it rather than each carrying its
+// own near-identical input. Unlike MatrixAxisLabelInputs' pair, it reuses
+// that component's styling (.matrix-axis-labels) rather than needing its own
+// CSS class.
 function PyramidChartTitleInput({ title, onCommit }: { title: string; onCommit: (title: string) => void }) {
   const [value, setValue] = useState(title);
 
