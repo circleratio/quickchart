@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Canvas } from "./components/canvas/Canvas";
 import { ToolPanel } from "./components/panels/ToolPanel";
+import { CommandPalette } from "./components/panels/CommandPalette";
 import { PropertyPanel } from "./components/panels/PropertyPanel";
 import { TemplateLibraryPanel } from "./components/panels/TemplateLibraryPanel";
 import { StructuredTextPanel } from "./components/panels/StructuredTextPanel";
@@ -17,6 +18,10 @@ function App() {
   // the next background click, same click-to-place flow as a shape tool
   // (doc/spec.md §6.4's "drop position" becomes "click position" here).
   const [pendingUserTemplate, setPendingUserTemplate] = useState<UserTemplate | null>(null);
+  // ToolPanel's search icon / Ctrl+K opens this (doc/spec.md §5.1) - ephemeral
+  // UI-only state, same "just a local state" treatment as activeTool/
+  // pendingUserTemplate above rather than a dedicated store.
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -48,6 +53,9 @@ function App() {
       } else if (isMod && e.key.toLowerCase() === "g") {
         e.preventDefault();
         store.groupShapes(selectedShapeIds);
+      } else if (isMod && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen(true);
       } else if (e.key === "Delete" || e.key === "Backspace") {
         for (const id of selectedShapeIds) store.removeShape(id);
         useSelectionStore.getState().clear();
@@ -63,7 +71,7 @@ function App() {
       <Toolbar />
       <div className="app-layout">
         <div className="left-column">
-          <ToolPanel activeTool={activeTool} onSelectTool={setActiveTool} />
+          <ToolPanel activeTool={activeTool} onSelectTool={setActiveTool} onOpenPalette={() => setPaletteOpen(true)} />
           <TemplateLibraryPanel
             pendingUserTemplate={pendingUserTemplate}
             onSelectUserTemplate={setPendingUserTemplate}
@@ -78,6 +86,11 @@ function App() {
         />
         <PropertyPanel />
       </div>
+      <CommandPalette
+        open={paletteOpen}
+        onSelectTool={setActiveTool}
+        onClose={() => setPaletteOpen(false)}
+      />
     </div>
   );
 }
