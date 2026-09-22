@@ -10,7 +10,7 @@ import { VENN_MAX_SETS, VENN_MIN_SETS } from "../../core/templates/venn";
 import type { OutlineNode, StructuredBlock } from "../../core/model/document";
 
 const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
-  pyramid: "ピラミッド",
+  pyramid: "ツリー図",
   logicTree: "ロジックツリー",
   matrix: "マトリクス",
   venn: "ベン図",

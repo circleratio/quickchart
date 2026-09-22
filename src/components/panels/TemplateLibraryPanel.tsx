@@ -7,7 +7,7 @@ import type { UserTemplate } from "../../core/model/userTemplate";
 import { deleteUserTemplate, errorMessageFor, getUserTemplates } from "../../core/io/tauriApi";
 
 const PATTERNS: { id: StructuredBlock["pattern"]; label: string; available: boolean }[] = [
-  { id: "pyramid", label: "ピラミッド", available: true },
+  { id: "pyramid", label: "ツリー図", available: true },
   { id: "logicTree", label: "ロジックツリー", available: true },
   { id: "matrix", label: "マトリクス", available: true },
   { id: "venn", label: "ベン図", available: true },
