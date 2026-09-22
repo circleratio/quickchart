@@ -72,6 +72,12 @@ export interface LayoutNode {
   // separator (style.ts's separatorStyle, used by headingBullets/bulletMatrix
   // and by pyramidChart's own row separators). Undefined behaves as true.
   dashed?: boolean;
+  // For a "line" kind: true generates a directional ConnectorShape
+  // (`type: "arrow"`, marker-tipped - see ConnectorRenderer.tsx) from (x, y)
+  // to (x + width, y + height) instead of a plain undirected LineShape -
+  // schedule.ts's simplified dependency arrows (doc/spec.md §6.2.6).
+  // Undefined/false behaves as a plain line.
+  arrowhead?: boolean;
 }
 
 export interface TreeLayoutOptions {

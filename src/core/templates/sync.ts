@@ -23,6 +23,8 @@ import { layoutVenn, VENN_MAX_SETS, VENN_MIN_SETS } from "./venn";
 import { layoutHeadingBullets } from "./headingBullets";
 import { layoutBulletMatrix } from "./bulletMatrix";
 import { layoutPyramidChart } from "./pyramidChart";
+import { layoutSchedule } from "./schedule";
+import type { Milestone, ScheduleParams } from "./schedule";
 import type { LayoutNode } from "./treeLayout";
 
 // All functions here take a plain Document and return a new plain Document -
@@ -41,7 +43,8 @@ function isFullyRelayoutedPattern(pattern: StructuredBlock["pattern"]): boolean 
     pattern === "venn" ||
     pattern === "headingBullets" ||
     pattern === "bulletMatrix" ||
-    pattern === "pyramidChart"
+    pattern === "pyramidChart" ||
+    pattern === "schedule"
   );
 }
 
@@ -70,6 +73,34 @@ function pyramidChartTitle(params: Record<string, unknown>): string {
   return typeof params.title === "string" ? params.title : "";
 }
 
+const SCHEDULE_DEFAULT_TODAY = new Date();
+const SCHEDULE_DEFAULT_YEAR = SCHEDULE_DEFAULT_TODAY.getFullYear();
+const SCHEDULE_DEFAULT_START_MONTH = SCHEDULE_DEFAULT_TODAY.getMonth() + 1; // Date's month is 0-indexed
+const SCHEDULE_DEFAULT_COLUMN_COUNT = 6;
+
+// schedule's month range/milestones/dependency links all live in params, not
+// the outline (doc/spec.md §6.2.6) - same reasoning as bulletMatrix's column
+// headers (none of them have a natural position in the row/bar tree).
+// Defaults start from this month so a freshly added block renders something
+// immediately relevant before the user sets real values.
+function scheduleParams(params: Record<string, unknown>): ScheduleParams {
+  const startYear = typeof params.startYear === "number" ? params.startYear : SCHEDULE_DEFAULT_YEAR;
+  const rawStartMonth = typeof params.startMonth === "number" ? params.startMonth : SCHEDULE_DEFAULT_START_MONTH;
+  const startMonth = Math.min(12, Math.max(1, rawStartMonth));
+  const rawColumnCount = typeof params.columnCount === "number" ? params.columnCount : SCHEDULE_DEFAULT_COLUMN_COUNT;
+  const columnCount = Math.max(1, Math.round(rawColumnCount));
+  const milestones = Array.isArray(params.milestones)
+    ? params.milestones.filter((m): m is Milestone => typeof m === "object" && m !== null && typeof m.date === "string" && typeof m.label === "string")
+    : [];
+  const connections =
+    typeof params.connections === "object" && params.connections !== null && !Array.isArray(params.connections)
+      ? Object.fromEntries(
+          Object.entries(params.connections as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+        )
+      : {};
+  return { startYear, startMonth, columnCount, milestones, connections };
+}
+
 function layoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[], params: Record<string, unknown> = {}): LayoutNode[] {
   const nodes = rawLayoutFor(pattern, outline, params);
   // venn.ts's circle-centered layout, and bulletMatrix's column headers
@@ -78,7 +109,7 @@ function layoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[], 
   // always-non-negative margin for axis labels (AXIS_MARGIN_X/Y) that must
   // stay intact, and pyramid/logicTree's cursor-based placement already
   // starts at (0, 0), so normalizing them here would be a no-op at best.
-  return pattern === "venn" || pattern === "bulletMatrix" || pattern === "pyramidChart"
+  return pattern === "venn" || pattern === "bulletMatrix" || pattern === "pyramidChart" || pattern === "schedule"
     ? normalizeToOrigin(nodes)
     : nodes;
 }
@@ -99,6 +130,8 @@ function rawLayoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[
       return layoutBulletMatrix(outline, bulletMatrixColumnHeaders(params));
     case "pyramidChart":
       return layoutPyramidChart(outline, pyramidChartColumnHeaders(params), pyramidChartTitle(params));
+    case "schedule":
+      return layoutSchedule(outline, scheduleParams(params));
     default:
       return [];
   }
@@ -464,9 +497,45 @@ function emptyPyramidChartRow(block: StructuredBlock): OutlineNode {
   };
 }
 
+// A schedule bar's 2 children are position-based like pyramidChart's
+// scale/cells (doc/spec.md §6.2.6): child[0]=start date, child[1]=end date,
+// both "YYYY-MM-DD" strings entered via dedicated date inputs rather than
+// free text (see schedule.ts's dateToGridX).
+function emptyScheduleBar(): OutlineNode {
+  return {
+    id: uuidv4(),
+    text: "",
+    children: [
+      { id: uuidv4(), text: "", children: [] },
+      { id: uuidv4(), text: "", children: [] },
+    ],
+  };
+}
+
+// A schedule row needs one bar up front for the same reason
+// emptyBulletMatrixRow/emptyPyramidChartRow above do - an empty row with zero
+// bars would give the structured outline editor nothing bar-shaped to expand
+// into (a "+子" on the row would add a plain 0-child node, not a proper bar).
+function emptyScheduleRow(): OutlineNode {
+  return { id: uuidv4(), text: "", children: [emptyScheduleBar()] };
+}
+
 function newRootNode(block: StructuredBlock): OutlineNode {
   if (block.pattern === "bulletMatrix") return emptyBulletMatrixRow(block);
   if (block.pattern === "pyramidChart") return emptyPyramidChartRow(block);
+  if (block.pattern === "schedule") return emptyScheduleRow();
+  return { id: uuidv4(), text: "", children: [] };
+}
+
+// addOutlineChild's own new node, prefilled the same way as newRootNode above
+// when the parent is a schedule ROW (adding a new bar to it) - unlike
+// newRootNode, only schedule needs this: bulletMatrix/pyramidChart's own
+// depth-1 prefill only ever happens as part of adding a whole new row
+// (their cell/scale counts are fixed by params, not grown one at a time).
+function newChildNode(block: StructuredBlock, parentNodeId: string): OutlineNode {
+  if (block.pattern === "schedule" && block.outline.some((n) => n.id === parentNodeId)) {
+    return emptyScheduleBar();
+  }
   return { id: uuidv4(), text: "", children: [] };
 }
 
@@ -491,7 +560,7 @@ export function addFirstOutlineNode(doc: Document, blockId: string): Document {
 export function addOutlineChild(doc: Document, blockId: string, parentNodeId: string): Document {
   const block = findBlock(doc, blockId);
   if (!block || !findNode(block.outline, parentNodeId)) return doc;
-  const newNode: OutlineNode = { id: uuidv4(), text: "", children: [] };
+  const newNode: OutlineNode = newChildNode(block, parentNodeId);
   const newOutline = updateChildren(block.outline, parentNodeId, (children) => [...children, newNode]);
 
   if (isFullyRelayoutedPattern(block.pattern)) {
@@ -575,11 +644,16 @@ export function updateOutlineNodeText(doc: Document, blockId: string, nodeId: st
   if (!block) return doc;
   const newOutline = mapOutline(block.outline, (node) => (node.id === nodeId ? { ...node, text } : node));
 
-  // Venn only: a text edit can change which set-combination an element
-  // belongs to, so its shape may need to move, split, or merge with another -
-  // matrix/pyramid/logicTree positions never depend on text (doc/spec.md
-  // §6.2.2).
-  if (block.pattern === "venn") {
+  // Venn: a text edit can change which set-combination an element belongs
+  // to, so its shape may need to move, split, or merge with another - matrix/
+  // pyramid/logicTree positions never depend on text (doc/spec.md §6.2.2).
+  // schedule: a bar's date fields (schedule.ts's child[0]/[1]) have no shape
+  // of their own to patch in place at all - editing one determines whether
+  // its bar renders, and where, so it always needs a full regenerate rather
+  // than the "find the matching shape, patch its content" default below
+  // (which would silently do nothing for a date field, since date fields
+  // aren't rendered as shapes to begin with).
+  if (block.pattern === "venn" || block.pattern === "schedule") {
     return regenerateBlockShapes(doc, block, newOutline);
   }
 
@@ -765,6 +839,39 @@ export function updatePyramidChartTitle(doc: Document, blockId: string, title: s
   return regenerateBlockShapes(doc, updatedBlock, block.outline);
 }
 
+// schedule's month range (doc/spec.md §6.2.6) - like pyramidChart's title,
+// just regenerates the whole (cheap, single-block) chart rather than
+// incrementally patching header shapes, since every bar's x position also
+// depends on this range and would need recomputing anyway.
+export function updateScheduleMonths(
+  doc: Document,
+  blockId: string,
+  months: { startYear: number; startMonth: number; columnCount: number },
+): Document {
+  const block = findBlock(doc, blockId);
+  if (!block || block.pattern !== "schedule") return doc;
+  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, ...months } };
+  return regenerateBlockShapes(doc, updatedBlock, block.outline);
+}
+
+export function updateScheduleMilestones(doc: Document, blockId: string, milestones: Milestone[]): Document {
+  const block = findBlock(doc, blockId);
+  if (!block || block.pattern !== "schedule") return doc;
+  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, milestones } };
+  return regenerateBlockShapes(doc, updatedBlock, block.outline);
+}
+
+// Bar dependency links (doc/spec.md §6.2.6) - a flat barNodeId -> barNodeId
+// map, same reasoning as milestones/month range for living in params instead
+// of the outline (a dependency can point at a bar in any row, not just this
+// bar's own parent/sibling).
+export function updateScheduleConnections(doc: Document, blockId: string, connections: Record<string, string>): Document {
+  const block = findBlock(doc, blockId);
+  if (!block || block.pattern !== "schedule") return doc;
+  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, connections } };
+  return regenerateBlockShapes(doc, updatedBlock, block.outline);
+}
+
 // Matrix axis labels (params._axisShapeIds) sit outside the grid, deliberately
 // at negative offsets from it (layoutMatrixAxisLabels), and are excluded here
 // so they can never pull the computed origin - and so every later
@@ -816,13 +923,20 @@ function relayoutBlock(doc: Document, block: StructuredBlock, newOutline: Outlin
 // (structural edits reset any manual per-shape style/id) every other
 // isFullyRelayoutedPattern already accepts for add/delete.
 //
+// schedule needs the same full-regenerate treatment for a different reason:
+// its month/row headers, grid lines, milestone markers, and dependency
+// connectors (schedule.ts) are all untracked shapes (`templateNodeIds: []`),
+// which relayoutBlock never touches (see below) - reordering a row without a
+// full regenerate would leave the whole grid/header/connector layer stale
+// against the rows' new positions.
+//
 // Either way, "pyramid"/"logicTree"'s connector lines (regenerateTreeConnectors)
 // need a resync too: relayoutBlock repositions every ordinary node shape but,
 // having no templateNodeIds, never touches connector shapes - which would
 // otherwise keep pointing at their pre-restructure positions.
 function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline: OutlineNode[]): Document {
   const next =
-    block.pattern === "pyramidChart"
+    block.pattern === "pyramidChart" || block.pattern === "schedule"
       ? regenerateBlockShapes(doc, block, newOutline)
       : relayoutBlock(doc, block, newOutline);
   return regenerateTreeConnectors(next, block.id);
@@ -920,7 +1034,17 @@ function regenerateBlockShapes(doc: Document, block: StructuredBlock, newOutline
         : layoutNode.kind === "rect"
           ? { ...base, type: "rect", style }
           : layoutNode.kind === "line"
-            ? { ...base, type: "line", style }
+            ? layoutNode.arrowhead
+              ? {
+                  ...base,
+                  type: "arrow",
+                  style,
+                  points: [
+                    { x: base.x, y: base.y },
+                    { x: base.x + base.width, y: base.y + base.height },
+                  ],
+                }
+              : { ...base, type: "line", style }
             : layoutNode.kind === "polygon"
               ? { ...base, type: "polygon", style, points: layoutNode.points ?? [] }
               : {

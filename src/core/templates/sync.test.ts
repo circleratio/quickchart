@@ -669,6 +669,112 @@ describe("pyramidChart blocks (fully-relayouted pattern)", () => {
   });
 });
 
+describe("schedule blocks (fully-relayouted pattern)", () => {
+  function scheduleBlock(doc: Document) {
+    const { document, blockId } = sync.addEmptyStructuredBlock(doc, "schedule");
+    return { document: sync.addFirstOutlineNode(document, blockId), blockId };
+  }
+
+  it("fills a newly-added row with one bar that has a start/end date slot", () => {
+    const { document, blockId } = scheduleBlock(createEmptyDocument());
+    const block = document.structuredBlocks.find((b) => b.id === blockId)!;
+    expect(block.outline[0].children).toHaveLength(1);
+    expect(block.outline[0].children[0].children).toHaveLength(2);
+  });
+
+  it("defaults the start month to this month, not a fixed month, when the user hasn't set one", () => {
+    const { document } = scheduleBlock(createEmptyDocument());
+    const today = new Date();
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    expect(shapes.some((s) => s.type === "text" && s.content === `${today.getFullYear()}年`)).toBe(true);
+    expect(shapes.some((s) => s.type === "text" && s.content === `${today.getMonth() + 1}月`)).toBe(true);
+  });
+
+  it("addOutlineChild on a row adds another bar with its own date slots, not a plain node", () => {
+    let { document, blockId } = scheduleBlock(createEmptyDocument());
+    const rowId = document.structuredBlocks[0].outline[0].id;
+    document = sync.addOutlineChild(document, blockId, rowId);
+    const row = document.structuredBlocks[0].outline[0];
+    expect(row.children).toHaveLength(2);
+    expect(row.children[1].children).toHaveLength(2);
+  });
+
+  it("renders no bar shape until both of its dates are filled in", () => {
+    let { document, blockId } = scheduleBlock(createEmptyDocument());
+    const bar = document.structuredBlocks[0].outline[0].children[0];
+    let shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    expect(shapes.some((s) => s.templateNodeIds?.includes(bar.id))).toBe(false);
+
+    document = sync.updateOutlineNodeText(document, blockId, bar.children[0].id, "2018-06-01");
+    shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    expect(shapes.some((s) => s.templateNodeIds?.includes(bar.id))).toBe(false); // still missing the end date
+
+    document = sync.updateOutlineNodeText(document, blockId, bar.children[1].id, "2018-06-10");
+    shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    expect(shapes.some((s) => s.templateNodeIds?.includes(bar.id))).toBe(true);
+  });
+
+  it("renders the bar's own label text once both dates are set", () => {
+    let { document, blockId } = scheduleBlock(createEmptyDocument());
+    const bar = document.structuredBlocks[0].outline[0].children[0];
+    document = sync.updateOutlineNodeText(document, blockId, bar.children[0].id, "2018-06-01");
+    document = sync.updateOutlineNodeText(document, blockId, bar.children[1].id, "2018-06-10");
+    document = sync.updateOutlineNodeText(document, blockId, bar.id, "連携可能性の検討");
+
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    const barShape = shapes.find((s) => s.templateNodeIds?.includes(bar.id));
+    expect(barShape).toBeDefined();
+    expect(barShape!.type === "text" && barShape!.content).toBe("連携可能性の検討");
+  });
+
+  it("updateScheduleMonths regenerates the year/month header text", () => {
+    let { document, blockId } = scheduleBlock(createEmptyDocument());
+    document = sync.updateScheduleMonths(document, blockId, { startYear: 2020, startMonth: 4, columnCount: 3 });
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    expect(shapes.some((s) => s.type === "text" && s.content === "2020年")).toBe(true);
+    expect(shapes.some((s) => s.type === "text" && s.content === "4月")).toBe(true);
+  });
+
+  it("updateScheduleMilestones adds a triangle marker shape", () => {
+    let { document, blockId } = scheduleBlock(createEmptyDocument());
+    document = sync.updateScheduleMilestones(document, blockId, [{ date: "2018-06-29", label: "中間報告書①" }]);
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    expect(shapes.some((s) => s.type === "polygon")).toBe(true);
+    expect(shapes.some((s) => s.type === "text" && s.content === "中間報告書①(6/29)")).toBe(true);
+  });
+
+  it("updateScheduleConnections draws a solid, marker-tipped arrow shape between two bars", () => {
+    let { document, blockId } = scheduleBlock(createEmptyDocument());
+    const bar1 = document.structuredBlocks[0].outline[0].children[0];
+    document = sync.updateOutlineNodeText(document, blockId, bar1.children[0].id, "2018-06-01");
+    document = sync.updateOutlineNodeText(document, blockId, bar1.children[1].id, "2018-06-10");
+    document = sync.addOutlineChild(document, blockId, document.structuredBlocks[0].outline[0].id);
+    const bar2 = document.structuredBlocks[0].outline[0].children[1];
+    document = sync.updateOutlineNodeText(document, blockId, bar2.children[0].id, "2018-06-15");
+    document = sync.updateOutlineNodeText(document, blockId, bar2.children[1].id, "2018-06-25");
+
+    document = sync.updateScheduleConnections(document, blockId, { [bar1.id]: bar2.id });
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    const connector = shapes.find((s) => s.type === "arrow" && s.style.strokeDasharray === undefined);
+    expect(connector).toBeDefined();
+    expect(connector!.type === "arrow" && connector!.points).toHaveLength(2);
+  });
+
+  it("reordering rows (move up/down) regenerates the whole grid instead of leaving stale header/connector shapes", () => {
+    let { document, blockId } = scheduleBlock(createEmptyDocument());
+    const row1Id = document.structuredBlocks[0].outline[0].id;
+    document = sync.addOutlineSibling(document, blockId, row1Id);
+    const row2Id = document.structuredBlocks[0].outline[1].id;
+
+    const beforeIds = new Set(document.structuredBlocks[0].generatedShapeIds);
+    document = sync.moveOutlineNode(document, blockId, row2Id, "up");
+    const afterIds = document.structuredBlocks[0].generatedShapeIds;
+
+    expect(afterIds.length).toBeGreaterThan(0);
+    for (const id of afterIds) expect(beforeIds.has(id)).toBe(false); // fully regenerated, not stale
+  });
+});
+
 describe("pyramid incremental placement (reproducing the reported bug)", () => {
   it("places a child below its root (greater y, same-ish x) via addOutlineChild", () => {
     let { document, blockId } = pyramidBlock(createEmptyDocument());

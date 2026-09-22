@@ -10,6 +10,7 @@ import { instantiateTemplate } from "../model/userTemplate";
 import { DocumentHistory } from "./historyMiddleware";
 import * as sync from "../templates/sync";
 import type { MatrixAxisParams } from "../templates/matrix";
+import type { Milestone } from "../templates/schedule";
 
 type ZOrderDirection = "front" | "back" | "forward" | "backward";
 
@@ -137,6 +138,9 @@ interface DocumentState {
   replaceBulletMatrix: (blockId: string, columnHeaders: string[], newOutline: StructuredBlock["outline"]) => void;
   updatePyramidChartColumns: (blockId: string, columnHeaders: string[]) => void;
   updatePyramidChartTitle: (blockId: string, title: string) => void;
+  updateScheduleMonths: (blockId: string, months: { startYear: number; startMonth: number; columnCount: number }) => void;
+  updateScheduleMilestones: (blockId: string, milestones: Milestone[]) => void;
+  updateScheduleConnections: (blockId: string, connections: Record<string, string>) => void;
 
   // User templates (doc/spec.md §6.4): placing one adds plain shapes (no
   // structured-template linkage) - registering one is pure read + an IPC
@@ -434,6 +438,27 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
 
     updatePyramidChartTitle: (blockId, title) => {
       const next = sync.updatePyramidChartTitle(get().document, blockId, title);
+      change((draft) => {
+        Object.assign(draft, next);
+      });
+    },
+
+    updateScheduleMonths: (blockId, months) => {
+      const next = sync.updateScheduleMonths(get().document, blockId, months);
+      change((draft) => {
+        Object.assign(draft, next);
+      });
+    },
+
+    updateScheduleMilestones: (blockId, milestones) => {
+      const next = sync.updateScheduleMilestones(get().document, blockId, milestones);
+      change((draft) => {
+        Object.assign(draft, next);
+      });
+    },
+
+    updateScheduleConnections: (blockId, connections) => {
+      const next = sync.updateScheduleConnections(get().document, blockId, connections);
       change((draft) => {
         Object.assign(draft, next);
       });

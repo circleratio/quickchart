@@ -7,6 +7,7 @@ import { parseOutline } from "../../core/templates/outlineParser";
 import { parseBulletMatrixMarkdown } from "../../core/templates/bulletMatrixParser";
 import { MATRIX_MAX_ROOTS } from "../../core/templates/matrix";
 import { VENN_MAX_SETS, VENN_MIN_SETS } from "../../core/templates/venn";
+import type { Milestone } from "../../core/templates/schedule";
 import type { OutlineNode, StructuredBlock } from "../../core/model/document";
 
 const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
@@ -17,6 +18,7 @@ const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
   headingBullets: "見出し付き箇条書き",
   bulletMatrix: "箇条書きマトリクス",
   pyramidChart: "ピラミッド図",
+  schedule: "スケジュール",
 };
 
 const BULLET_MATRIX_IMPORT_PLACEHOLDER =
@@ -93,6 +95,24 @@ export function StructuredTextPanel() {
 
   const rootLimit = rootLimitFor(block);
   const atRootLimit = block.outline.length >= rootLimit;
+
+  // schedule's row/bar tree needs dedicated date-field/connection-picker UI
+  // per bar rather than the generic single-text-input OutlineRow (doc/spec.md
+  // §6.2.6) - simplest as its own fully separate render path rather than
+  // threading yet more pattern-specific branches through OutlineRow itself.
+  if (block.pattern === "schedule") {
+    return (
+      <div className="structured-text-panel">
+        <div className="structured-text-panel-header">
+          <h3>階層テキスト({PATTERN_LABEL[block.pattern]})</h3>
+          <button type="button" onClick={() => setActiveBlockId(null)}>
+            閉じる
+          </button>
+        </div>
+        <ScheduleEditor block={block} />
+      </div>
+    );
+  }
 
   return (
     <div className="structured-text-panel">
@@ -286,6 +306,269 @@ function BulletMatrixColumnInputs({
       >
         + 列を追加
       </button>
+    </div>
+  );
+}
+
+function scheduleMonths(params: Record<string, unknown>): { startYear: number; startMonth: number; columnCount: number } {
+  const today = new Date();
+  return {
+    startYear: typeof params.startYear === "number" ? params.startYear : today.getFullYear(),
+    startMonth: typeof params.startMonth === "number" ? params.startMonth : today.getMonth() + 1, // Date's month is 0-indexed
+    columnCount: typeof params.columnCount === "number" ? params.columnCount : 6,
+  };
+}
+
+function scheduleMilestonesFrom(params: Record<string, unknown>): Milestone[] {
+  const raw = params.milestones;
+  return Array.isArray(raw)
+    ? raw.filter((m): m is Milestone => typeof m === "object" && m !== null && typeof m.date === "string" && typeof m.label === "string")
+    : [];
+}
+
+function scheduleConnectionsFrom(params: Record<string, unknown>): Record<string, string> {
+  const raw = params.connections;
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
+  return Object.fromEntries(Object.entries(raw as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === "string"));
+}
+
+// schedule's row/bar tree (doc/spec.md §6.2.6): a row is a plain label; each
+// of its bars needs a label plus a start/end date (bar.children[0]/[1], see
+// schedule.ts) and an optional "connects to" dependency link
+// (params.connections) - different enough per-node shape from every other
+// pattern's plain text row that it gets a wholly separate editor rather than
+// OutlineRow's generic recursive tree.
+function ScheduleEditor({ block }: { block: StructuredBlock }) {
+  const addFirstOutlineNode = useDocumentStore((s) => s.addFirstOutlineNode);
+  const addOutlineChild = useDocumentStore((s) => s.addOutlineChild);
+  const addOutlineSibling = useDocumentStore((s) => s.addOutlineSibling);
+  const deleteOutlineNode = useDocumentStore((s) => s.deleteOutlineNode);
+  const moveOutlineNode = useDocumentStore((s) => s.moveOutlineNode);
+  const updateOutlineNodeText = useDocumentStore((s) => s.updateOutlineNodeText);
+  const updateScheduleMonths = useDocumentStore((s) => s.updateScheduleMonths);
+  const updateScheduleMilestones = useDocumentStore((s) => s.updateScheduleMilestones);
+  const updateScheduleConnections = useDocumentStore((s) => s.updateScheduleConnections);
+
+  const connections = scheduleConnectionsFrom(block.params);
+  // Flat "row label > bar label" list of every bar in the document, for each
+  // bar's own "接続先" (connects-to) picker below.
+  const allBars = block.outline.flatMap((row) =>
+    row.children.map((bar) => ({ id: bar.id, label: `${row.text || "(無題の行)"} > ${bar.text || "(無題のバー)"}` })),
+  );
+
+  return (
+    <>
+      <ScheduleMonthsInput key={`${block.id}-months`} months={scheduleMonths(block.params)} onCommit={(m) => updateScheduleMonths(block.id, m)} />
+      <ScheduleMilestonesInput
+        key={`${block.id}-milestones`}
+        milestones={scheduleMilestonesFrom(block.params)}
+        onCommit={(m) => updateScheduleMilestones(block.id, m)}
+      />
+
+      {block.outline.length === 0 ? (
+        <button type="button" onClick={() => addFirstOutlineNode(block.id)}>
+          + 最初の行を追加
+        </button>
+      ) : (
+        <div className="outline-tree">
+          {block.outline.map((row, i) => (
+            <div className="schedule-row" key={row.id}>
+              <div className="outline-row">
+                <span className="schedule-row-number">({i + 1})</span>
+                <input
+                  value={row.text}
+                  placeholder="行のラベルを入力"
+                  onChange={(e) => updateOutlineNodeText(block.id, row.id, e.target.value)}
+                />
+                <button type="button" title="上へ移動" onClick={() => moveOutlineNode(block.id, row.id, "up")}>
+                  ↑
+                </button>
+                <button type="button" title="下へ移動" onClick={() => moveOutlineNode(block.id, row.id, "down")}>
+                  ↓
+                </button>
+                <button type="button" title="行を追加" onClick={() => addOutlineSibling(block.id, row.id)}>
+                  +行
+                </button>
+                <button type="button" title="削除" onClick={() => deleteOutlineNode(block.id, row.id)}>
+                  ×
+                </button>
+              </div>
+              <div className="schedule-bars">
+                {row.children.map((bar) => (
+                  <ScheduleBarEditor
+                    key={bar.id}
+                    bar={bar}
+                    blockId={block.id}
+                    allBars={allBars}
+                    connections={connections}
+                    onCommitConnections={(next) => updateScheduleConnections(block.id, next)}
+                    onDelete={() => deleteOutlineNode(block.id, bar.id)}
+                  />
+                ))}
+                <button type="button" onClick={() => addOutlineChild(block.id, row.id)}>
+                  + バーを追加
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function ScheduleMonthsInput({
+  months,
+  onCommit,
+}: {
+  months: { startYear: number; startMonth: number; columnCount: number };
+  onCommit: (months: { startYear: number; startMonth: number; columnCount: number }) => void;
+}) {
+  const [startYear, setStartYear] = useState(months.startYear);
+  const [startMonth, setStartMonth] = useState(months.startMonth);
+  const [columnCount, setColumnCount] = useState(months.columnCount);
+
+  function commit() {
+    onCommit({ startYear, startMonth, columnCount });
+  }
+
+  return (
+    <div className="matrix-axis-labels">
+      <h4>期間</h4>
+      <label>
+        年
+        <input type="number" value={startYear} onChange={(e) => setStartYear(Number(e.target.value))} onBlur={commit} />
+      </label>
+      <label>
+        開始月
+        <input type="number" min={1} max={12} value={startMonth} onChange={(e) => setStartMonth(Number(e.target.value))} onBlur={commit} />
+      </label>
+      <label>
+        列数(月数)
+        <input type="number" min={1} value={columnCount} onChange={(e) => setColumnCount(Number(e.target.value))} onBlur={commit} />
+      </label>
+    </div>
+  );
+}
+
+// Milestones (doc/spec.md §6.2.6) - a dynamic list like BulletMatrixColumnInputs,
+// just with a date field alongside each label.
+function ScheduleMilestonesInput({ milestones, onCommit }: { milestones: Milestone[]; onCommit: (milestones: Milestone[]) => void }) {
+  const [items, setItems] = useState(milestones);
+
+  return (
+    <div className="bullet-matrix-columns">
+      <h4>マイルストーン</h4>
+      {items.map((milestone, i) => (
+        <div className="bullet-matrix-column-row" key={i}>
+          <input
+            type="date"
+            value={milestone.date}
+            onChange={(e) => setItems((prev) => prev.map((m, j) => (j === i ? { ...m, date: e.target.value } : m)))}
+            onBlur={() => onCommit(items)}
+          />
+          <input
+            value={milestone.label}
+            placeholder="マイルストーン名"
+            onChange={(e) => setItems((prev) => prev.map((m, j) => (j === i ? { ...m, label: e.target.value } : m)))}
+            onBlur={() => onCommit(items)}
+          />
+          <button
+            type="button"
+            title="このマイルストーンを削除"
+            onClick={() => {
+              const next = items.filter((_, j) => j !== i);
+              setItems(next);
+              onCommit(next);
+            }}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => {
+          const next = [...items, { date: "", label: "" }];
+          setItems(next);
+          onCommit(next);
+        }}
+      >
+        + マイルストーンを追加
+      </button>
+    </div>
+  );
+}
+
+// One bar: label + start/end date (bar.children[0]/[1] - schedule.ts) + an
+// optional dependency link to another bar anywhere in the document
+// (params.connections, doc/spec.md §6.2.6), rendered as a plain <select>
+// rather than a free-text reference since typing an exact bar id/name
+// reliably isn't realistic.
+function ScheduleBarEditor({
+  bar,
+  blockId,
+  allBars,
+  connections,
+  onCommitConnections,
+  onDelete,
+}: {
+  bar: OutlineNode;
+  blockId: string;
+  allBars: { id: string; label: string }[];
+  connections: Record<string, string>;
+  onCommitConnections: (connections: Record<string, string>) => void;
+  onDelete: () => void;
+}) {
+  const updateOutlineNodeText = useDocumentStore((s) => s.updateOutlineNodeText);
+  const startDateNode = bar.children[0];
+  const endDateNode = bar.children[1];
+  const connectsTo = connections[bar.id] ?? "";
+
+  return (
+    <div className="schedule-bar-item">
+      <div className="schedule-bar-row">
+        <input
+          className="schedule-bar-label"
+          value={bar.text}
+          placeholder="バーのラベルを入力"
+          onChange={(e) => updateOutlineNodeText(blockId, bar.id, e.target.value)}
+        />
+        <button type="button" title="このバーを削除" onClick={onDelete}>
+          ×
+        </button>
+      </div>
+      <div className="schedule-bar-row schedule-bar-details">
+        <input
+          type="date"
+          value={startDateNode?.text ?? ""}
+          onChange={(e) => startDateNode && updateOutlineNodeText(blockId, startDateNode.id, e.target.value)}
+        />
+        <span>〜</span>
+        <input
+          type="date"
+          value={endDateNode?.text ?? ""}
+          onChange={(e) => endDateNode && updateOutlineNodeText(blockId, endDateNode.id, e.target.value)}
+        />
+        <select
+          value={connectsTo}
+          onChange={(e) => {
+            const next = { ...connections };
+            if (e.target.value) next[bar.id] = e.target.value;
+            else delete next[bar.id];
+            onCommitConnections(next);
+          }}
+        >
+          <option value="">(接続先なし)</option>
+          {allBars
+            .filter((b) => b.id !== bar.id)
+            .map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.label}
+              </option>
+            ))}
+        </select>
+      </div>
     </div>
   );
 }

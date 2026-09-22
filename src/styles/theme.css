@@ -235,6 +235,81 @@ body {
   color: #8a94a3;
 }
 
+.schedule-row {
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px dashed #d9dee5;
+}
+
+.schedule-row-number {
+  font-size: 11px;
+  color: #8a94a3;
+  white-space: nowrap;
+}
+
+.schedule-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 16px;
+}
+
+.schedule-bar-item {
+  padding: 4px;
+  border: 1px solid #eef1f5;
+  border-radius: 4px;
+}
+
+.schedule-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.schedule-bar-row + .schedule-bar-row {
+  margin-top: 4px;
+}
+
+.schedule-bar-row input,
+.schedule-bar-row select {
+  padding: 4px 6px;
+  font-size: 11px;
+  border: 1px solid #d9dee5;
+  border-radius: 4px;
+  min-width: 0;
+}
+
+/* A full-width, normal-sized field for the bar's own label - not competing
+   for space with the date/connection fields below it (see
+   .schedule-bar-details), which is what previously squeezed it down to
+   looking like a checkbox. */
+.schedule-bar-label {
+  flex: 1;
+  min-width: 60px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.schedule-bar-details input,
+.schedule-bar-details select {
+  flex: 1;
+}
+
+.schedule-bar-details span {
+  font-size: 11px;
+  color: #8a94a3;
+}
+
+.schedule-bar-row button {
+  flex: none;
+  padding: 2px 6px;
+  font-size: 11px;
+  border: 1px solid #d9dee5;
+  border-radius: 4px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
 .template-register-status {
   font-size: 11px;
   color: #5b6472;
