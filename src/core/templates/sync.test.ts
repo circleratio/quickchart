@@ -30,14 +30,18 @@ describe("addEmptyStructuredBlock / addFirstOutlineNode", () => {
 });
 
 describe("addOutlineChild / addOutlineSibling", () => {
-  it("adds a child under the given parent and generates one shape for it", () => {
+  it("adds a child under the given parent and generates one shape for it, plus a connector line", () => {
     let { document, blockId } = pyramidBlock(createEmptyDocument());
     const rootId = nodeId(document, blockId, 0);
     document = sync.addOutlineChild(document, blockId, rootId);
 
     const block = document.structuredBlocks[0];
     expect(block.outline[0].children).toHaveLength(1);
-    expect(block.generatedShapeIds).toHaveLength(2);
+    const shapes = block.generatedShapeIds.map((id) => document.shapes[id]);
+    expect(shapes.filter((s) => s.type === "text")).toHaveLength(2); // root + child
+    // Single child: a stub down from the parent plus one into the child - no
+    // horizontal bus segment needed (see "tree connector lines" below).
+    expect(shapes.filter((s) => s.type === "line")).toHaveLength(2);
   });
 
   it("adds a sibling after the given node at the same level", () => {
@@ -63,19 +67,21 @@ describe("addOutlineChild / addOutlineSibling", () => {
 });
 
 describe("deleteOutlineNode", () => {
-  it("removes the node and its whole subtree, plus their shapes", () => {
+  it("removes the node and its whole subtree, plus their shapes and connectors", () => {
     let { document, blockId } = pyramidBlock(createEmptyDocument());
     const rootId = nodeId(document, blockId, 0);
     document = sync.addOutlineChild(document, blockId, rootId);
     const childId = document.structuredBlocks[0].outline[0].children[0].id;
     document = sync.addOutlineChild(document, blockId, childId);
-    expect(document.structuredBlocks[0].generatedShapeIds).toHaveLength(3);
+    // 3 node shapes (root/child/grandchild) + 2 connectors (root->child,
+    // child->grandchild), 2 line segments each (single child each level).
+    expect(document.structuredBlocks[0].generatedShapeIds).toHaveLength(7);
 
     document = sync.deleteOutlineNode(document, blockId, childId);
 
     const block = document.structuredBlocks[0];
     expect(block.outline[0].children).toHaveLength(0);
-    expect(block.generatedShapeIds).toHaveLength(1); // root only; child + grandchild gone
+    expect(block.generatedShapeIds).toHaveLength(1); // root only; child/grandchild and their connectors gone
     expect(Object.keys(document.shapes)).toHaveLength(1);
   });
 });
@@ -206,7 +212,9 @@ describe("replaceOutline", () => {
     document = sync.replaceOutline(document, blockId, newOutline);
 
     expect(document.shapes[oldShapeId]).toBeUndefined();
-    expect(document.structuredBlocks[0].generatedShapeIds).toHaveLength(2);
+    // 2 node shapes (new root + new child) + 2 connector line segments
+    // (single child - see "tree connector lines" below).
+    expect(document.structuredBlocks[0].generatedShapeIds).toHaveLength(4);
     expect(document.structuredBlocks[0].outline).toBe(newOutline);
   });
 });
@@ -758,5 +766,141 @@ describe("pyramid incremental placement (reproducing the reported bug)", () => {
     // The two children should end up on the same row as each other, not
     // stacked on top of one another or left on the root's row.
     expect(second.y).toBe(third.y);
+  });
+});
+
+describe("tree connector lines (ツリー図)", () => {
+  function lineShapesFor(document: Document, blockId: string) {
+    const block = document.structuredBlocks.find((b) => b.id === blockId)!;
+    return block.generatedShapeIds.map((id) => document.shapes[id]).filter((s) => s.type === "line");
+  }
+
+  it("draws a parent-child connector in the fixed pale gray, not dashed", () => {
+    let { document, blockId } = pyramidBlock(createEmptyDocument());
+    const rootId = nodeId(document, blockId, 0);
+    document = sync.addOutlineChild(document, blockId, rootId);
+
+    const lines = lineShapesFor(document, blockId);
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) {
+      expect(line.style.stroke).toBe("#c7c7c7");
+      expect(line.style.strokeDasharray).toBeUndefined();
+    }
+  });
+
+  it("draws just a vertical stub for a single child (no horizontal bus needed)", () => {
+    let { document, blockId } = pyramidBlock(createEmptyDocument());
+    const rootId = nodeId(document, blockId, 0);
+    document = sync.addOutlineChild(document, blockId, rootId);
+
+    const lines = lineShapesFor(document, blockId);
+    expect(lines).toHaveLength(2); // parent-bottom -> bus, bus -> child-top
+    expect(lines.every((l) => l.width === 0)).toBe(true); // both segments purely vertical
+  });
+
+  it("places the horizontal bus at the midpoint between the parent's bottom and the child's top, not a fixed offset", () => {
+    let { document, blockId } = pyramidBlock(createEmptyDocument());
+    const rootId = nodeId(document, blockId, 0);
+    document = sync.addOutlineChild(document, blockId, rootId);
+
+    const lines = lineShapesFor(document, blockId);
+    const parentStub = lines.find((l) => l.y === lines.reduce((min, l2) => Math.min(min, l2.y), Infinity))!;
+    const childStub = lines.find((l) => l !== parentStub)!;
+    // Same-length vertical segments on either side of the bus = true midpoint.
+    expect(Math.abs(parentStub.height)).toBeCloseTo(Math.abs(childStub.height));
+  });
+
+  it("draws a horizontal bus line spanning both children once a root has two", () => {
+    let { document, blockId } = pyramidBlock(createEmptyDocument());
+    const rootId = nodeId(document, blockId, 0);
+    document = sync.addOutlineChild(document, blockId, rootId);
+    const firstChildId = document.structuredBlocks[0].outline[0].children[0].id;
+    document = sync.addOutlineSibling(document, blockId, firstChildId);
+
+    const lines = lineShapesFor(document, blockId);
+    // vertical parent stub + horizontal bus + 2 vertical child stubs.
+    expect(lines).toHaveLength(4);
+    const bus = lines.find((l) => l.height === 0 && l.width !== 0)!;
+    expect(bus).toBeDefined();
+
+    const childIds = document.structuredBlocks[0].outline[0].children.map((c) => c.id);
+    const childCenters = childIds.map((id) => {
+      const shape = Object.values(document.shapes).find((s) => s.templateNodeIds?.includes(id))!;
+      return shape.x + shape.width / 2;
+    });
+    expect(Math.min(bus.x, bus.x + bus.width)).toBeCloseTo(Math.min(...childCenters));
+    expect(Math.max(bus.x, bus.x + bus.width)).toBeCloseTo(Math.max(...childCenters));
+  });
+
+  it("shrinks the connector when a child is removed, and clears it once the last child is gone", () => {
+    let { document, blockId } = pyramidBlock(createEmptyDocument());
+    const rootId = nodeId(document, blockId, 0);
+    document = sync.addOutlineChild(document, blockId, rootId);
+    const firstChildId = document.structuredBlocks[0].outline[0].children[0].id;
+    document = sync.addOutlineSibling(document, blockId, firstChildId);
+    const secondChildId = document.structuredBlocks[0].outline[0].children[1].id;
+    expect(lineShapesFor(document, blockId)).toHaveLength(4); // bus + 2 stubs + parent stub
+
+    document = sync.deleteOutlineNode(document, blockId, secondChildId);
+    expect(lineShapesFor(document, blockId)).toHaveLength(2); // back to single-child, no bus
+
+    document = sync.deleteOutlineNode(document, blockId, firstChildId);
+    expect(lineShapesFor(document, blockId)).toHaveLength(0); // no children left, no connector
+  });
+
+  it("creates a connector once indenting turns a sibling into a child, and clears it on outdent", () => {
+    let { document, blockId } = pyramidBlock(createEmptyDocument());
+    const firstRootId = nodeId(document, blockId, 0);
+    document = sync.addOutlineSibling(document, blockId, firstRootId);
+    const secondRootId = document.structuredBlocks[0].outline[1].id;
+    expect(lineShapesFor(document, blockId)).toHaveLength(0); // two independent roots, no connector yet
+
+    document = sync.indentOutlineNode(document, blockId, secondRootId);
+    expect(lineShapesFor(document, blockId)).toHaveLength(2); // now parent-child
+
+    document = sync.outdentOutlineNode(document, blockId, secondRootId);
+    expect(lineShapesFor(document, blockId)).toHaveLength(0); // back to independent roots
+  });
+
+  it("regenerates (fresh shape ids) rather than leaving stale connector shapes after reordering", () => {
+    let { document, blockId } = pyramidBlock(createEmptyDocument());
+    const rootId = nodeId(document, blockId, 0);
+    document = sync.addOutlineChild(document, blockId, rootId);
+    const firstChildId = document.structuredBlocks[0].outline[0].children[0].id;
+    document = sync.addOutlineSibling(document, blockId, firstChildId);
+    const secondChildId = document.structuredBlocks[0].outline[0].children[1].id;
+
+    const beforeIds = new Set(lineShapesFor(document, blockId).map((l) => l.id));
+    document = sync.moveOutlineNode(document, blockId, secondChildId, "up");
+    const afterLines = lineShapesFor(document, blockId);
+
+    expect(afterLines).toHaveLength(4); // same connector shape count/roles
+    for (const line of afterLines) expect(beforeIds.has(line.id)).toBe(false); // but freshly regenerated
+  });
+
+  it("draws connectors for a bulk-imported outline (replaceOutline) too", () => {
+    let { document, blockId } = pyramidBlock(createEmptyDocument());
+    const newOutline = [
+      {
+        id: "n1",
+        text: "root",
+        children: [
+          { id: "n2", text: "a", children: [] },
+          { id: "n3", text: "b", children: [] },
+        ],
+      },
+    ];
+    document = sync.replaceOutline(document, blockId, newOutline);
+
+    expect(lineShapesFor(document, blockId)).toHaveLength(4); // parent stub + bus + 2 child stubs
+  });
+
+  it("does not draw connectors for other patterns (e.g. logicTree)", () => {
+    const { document: base, blockId } = sync.addEmptyStructuredBlock(createEmptyDocument(), "logicTree");
+    let document = sync.addFirstOutlineNode(base, blockId);
+    const rootId = nodeId(document, blockId, 0);
+    document = sync.addOutlineChild(document, blockId, rootId);
+
+    expect(lineShapesFor(document, blockId)).toHaveLength(0);
   });
 });

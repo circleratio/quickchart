@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import type { Document, OutlineNode, StructuredBlock } from "../model/document";
 import { DEFAULT_LAYER_ID } from "../model/document";
-import type { Shape, ShapeId, TextShape } from "../model/shape";
+import type { LineShape, Shape, ShapeId, TextShape } from "../model/shape";
 import {
   contrastTextColor,
   defaultShapeStyle,
@@ -12,6 +12,7 @@ import {
   resolveColorSlot,
   ruleStyle,
   separatorStyle,
+  treeConnectorStyle,
 } from "../model/style";
 import type { ShapeStyle } from "../model/style";
 import { layoutPyramid } from "./pyramid";
@@ -213,6 +214,108 @@ function findShapeForNode(doc: Document, block: StructuredBlock, nodeId: string)
   return undefined;
 }
 
+// One parent's worth of elbow-jointed connector lines: a vertical stub down
+// from the parent's bottom-center, a horizontal "bus" spanning its children's
+// centers (skipped when there's only one, since it would have zero length),
+// then a vertical stub from the bus into each child's top-center - the
+// typical org-chart/tree-diagram look (see the ツリー図 reference image this
+// was built from). The bus sits halfway between the parent's bottom edge and
+// its (nearest, in case children ended up unevenly placed) child's top edge,
+// so the two vertical segments always come out equal length, rather than at
+// a fixed distance from the parent that reads as off-center whenever the
+// gap between rows isn't exactly double that fixed distance. Untracked
+// (`templateNodeIds: []`, same convention as bulletMatrix's grid lines):
+// purely structural, not tied to a specific outline node.
+function elbowConnectorShapes(parent: Shape, children: Shape[], zIndexStart: number): LineShape[] {
+  const style = treeConnectorStyle();
+  const parentCenterX = parent.x + parent.width / 2;
+  const parentBottomY = parent.y + parent.height;
+  const nearestChildTopY = Math.min(...children.map((c) => c.y));
+  const branchY = parentBottomY + (nearestChildTopY - parentBottomY) / 2;
+  const childCenterXs = children.map((c) => c.x + c.width / 2);
+  const leftX = Math.min(...childCenterXs);
+  const rightX = Math.max(...childCenterXs);
+
+  const segments: Array<[number, number, number, number]> = [[parentCenterX, parentBottomY, parentCenterX, branchY]];
+  if (rightX > leftX) segments.push([leftX, branchY, rightX, branchY]);
+  for (const child of children) {
+    const cx = child.x + child.width / 2;
+    segments.push([cx, branchY, cx, child.y]);
+  }
+
+  return segments.map(([x1, y1, x2, y2], i) => ({
+    id: uuidv4(),
+    type: "line",
+    x: x1,
+    y: y1,
+    width: x2 - x1,
+    height: y2 - y1,
+    rotation: 0,
+    style,
+    zIndex: zIndexStart + i,
+    templateNodeIds: [],
+  }));
+}
+
+// Rebuilds every parent-child connector line for a "pyramid" (ツリー図)
+// pattern block, deriving each one from the CURRENT actual position of its
+// parent/child shapes - not from treeLayout.ts's idealized cursor layout,
+// which pyramid's incremental add/delete placement (buildNodeShape above)
+// doesn't necessarily match (and which manual repositioning on the canvas
+// would diverge from anyway). Called after every structural edit (add/
+// delete/indent/outdent/move/bulk-import - see each call site below); a
+// no-op for any other pattern. Old connectors are tracked via
+// params._treeConnectorShapeIds (same "untracked shape, own params slot"
+// convention as matrix's _axisShapeIds) and always fully discarded and
+// redrawn rather than diffed, since a single child add/remove can change
+// where the horizontal bus needs to start/end.
+function regenerateTreeConnectors(doc: Document, blockId: string): Document {
+  const block = findBlock(doc, blockId);
+  if (!block || block.pattern !== "pyramid") return doc;
+
+  const oldIds = (block.params._treeConnectorShapeIds as ShapeId[] | undefined) ?? [];
+  const oldIdSet = new Set(oldIds);
+  const shapes = { ...doc.shapes };
+  for (const id of oldIds) delete shapes[id];
+
+  function shapeFor(nodeId: string): Shape | undefined {
+    for (const shapeId of block!.generatedShapeIds) {
+      if (oldIdSet.has(shapeId)) continue;
+      const shape = shapes[shapeId];
+      if (shape?.templateNodeIds?.includes(nodeId)) return shape;
+    }
+    return undefined;
+  }
+
+  const newShapes: LineShape[] = [];
+  function walk(node: OutlineNode) {
+    if (node.children.length > 0) {
+      const parentShape = shapeFor(node.id);
+      const childShapes = node.children.map((c) => shapeFor(c.id)).filter((s): s is Shape => Boolean(s));
+      if (parentShape && childShapes.length > 0) {
+        newShapes.push(...elbowConnectorShapes(parentShape, childShapes, Object.keys(shapes).length + newShapes.length));
+      }
+    }
+    for (const child of node.children) walk(child);
+  }
+  for (const root of block.outline) walk(root);
+
+  for (const s of newShapes) shapes[s.id] = s;
+  const newIds = newShapes.map((s) => s.id);
+
+  const layers = doc.layers.map((layer) =>
+    layer.id === DEFAULT_LAYER_ID
+      ? { ...layer, shapeIds: [...layer.shapeIds.filter((id) => !oldIdSet.has(id)), ...newIds] }
+      : layer,
+  );
+
+  return withBlock({ ...doc, shapes, layers }, blockId, (b) => ({
+    ...b,
+    params: { ...b.params, _treeConnectorShapeIds: newIds },
+    generatedShapeIds: [...b.generatedShapeIds.filter((id) => !oldIdSet.has(id)), ...newIds],
+  }));
+}
+
 function appendShapeToDocument(doc: Document, shape: Shape): Pick<Document, "shapes" | "layers"> {
   return {
     shapes: { ...doc.shapes, [shape.id]: shape },
@@ -225,10 +328,13 @@ function appendShapeToDocument(doc: Document, shape: Shape): Pick<Document, "sha
 // Position offset for a newly-added node's shape, relative to a reference
 // shape (the parent, for a new child; the preceding sibling, for a new
 // sibling). Direction depends on the pattern's layout axis (doc/spec.md §6.3).
+// pyramid's ("down") own two offsets are 1.5x logicTree's ("right") otherwise
+// coincidentally-equal values - ツリー図's blocks read better with more
+// breathing room (matches pyramid.ts's own GAP getting the same 1.5x).
 function newNodeOffset(pattern: StructuredBlock["pattern"], relation: "child" | "sibling"): { x: number; y: number } {
   const down = pattern !== "logicTree";
-  if (relation === "child") return down ? { x: 0, y: 100 } : { x: 220, y: 0 };
-  return down ? { x: 220, y: 0 } : { x: 0, y: 80 };
+  if (relation === "child") return down ? { x: 0, y: 150 } : { x: 220, y: 0 };
+  return down ? { x: 330, y: 0 } : { x: 0, y: 80 };
 }
 
 function buildNodeShape(
@@ -340,11 +446,12 @@ export function addOutlineChild(doc: Document, blockId: string, parentNodeId: st
 
   const shape = buildNodeShape(doc, block, newNode, parentNodeId, "child");
   const { shapes, layers } = appendShapeToDocument(doc, shape);
-  return withBlock({ ...doc, shapes, layers }, blockId, (b) => ({
+  const next = withBlock({ ...doc, shapes, layers }, blockId, (b) => ({
     ...b,
     outline: newOutline,
     generatedShapeIds: [...b.generatedShapeIds, shape.id],
   }));
+  return regenerateTreeConnectors(next, blockId);
 }
 
 export function addOutlineSibling(doc: Document, blockId: string, afterNodeId: string): Document {
@@ -366,11 +473,12 @@ export function addOutlineSibling(doc: Document, blockId: string, afterNodeId: s
 
   const shape = buildNodeShape(doc, block, newNode, afterNodeId, "sibling");
   const { shapes, layers } = appendShapeToDocument(doc, shape);
-  return withBlock({ ...doc, shapes, layers }, blockId, (b) => ({
+  const next = withBlock({ ...doc, shapes, layers }, blockId, (b) => ({
     ...b,
     outline: newOutline,
     generatedShapeIds: [...b.generatedShapeIds, shape.id],
   }));
+  return regenerateTreeConnectors(next, blockId);
 }
 
 export function deleteOutlineNode(doc: Document, blockId: string, nodeId: string): Document {
@@ -400,11 +508,12 @@ export function deleteOutlineNode(doc: Document, blockId: string, nodeId: string
     shapeIds: layer.shapeIds.filter((id) => !removedShapeIds.includes(id)),
   }));
 
-  return withBlock({ ...doc, shapes, layers }, blockId, (b) => ({
+  const next = withBlock({ ...doc, shapes, layers }, blockId, (b) => ({
     ...b,
     outline: newOutline,
     generatedShapeIds: b.generatedShapeIds.filter((id) => !removedShapeIds.includes(id)),
   }));
+  return regenerateTreeConnectors(next, blockId);
 }
 
 export function updateOutlineNodeText(doc: Document, blockId: string, nodeId: string, text: string): Document {
@@ -652,10 +761,17 @@ function relayoutBlock(doc: Document, block: StructuredBlock, newOutline: Outlin
 // full regenerateBlockShapes instead sidesteps that - the same tradeoff
 // (structural edits reset any manual per-shape style/id) every other
 // isFullyRelayoutedPattern already accepts for add/delete.
+//
+// Either way, "pyramid"'s connector lines (regenerateTreeConnectors) need a
+// resync too: relayoutBlock repositions every ordinary node shape but,
+// having no templateNodeIds, never touches connector shapes - which would
+// otherwise keep pointing at their pre-restructure positions.
 function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline: OutlineNode[]): Document {
-  return block.pattern === "pyramidChart"
-    ? regenerateBlockShapes(doc, block, newOutline)
-    : relayoutBlock(doc, block, newOutline);
+  const next =
+    block.pattern === "pyramidChart"
+      ? regenerateBlockShapes(doc, block, newOutline)
+      : relayoutBlock(doc, block, newOutline);
+  return regenerateTreeConnectors(next, block.id);
 }
 
 export function indentOutlineNode(doc: Document, blockId: string, nodeId: string): Document {
@@ -714,7 +830,8 @@ export function moveOutlineNode(doc: Document, blockId: string, nodeId: string, 
 export function replaceOutline(doc: Document, blockId: string, newOutline: OutlineNode[]): Document {
   const block = findBlock(doc, blockId);
   if (!block) return doc;
-  return regenerateBlockShapes(doc, block, newOutline);
+  const next = regenerateBlockShapes(doc, block, newOutline);
+  return regenerateTreeConnectors(next, blockId);
 }
 
 // Discards every shape `block` previously generated (by nodeId) and lays out

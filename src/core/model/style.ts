@@ -176,3 +176,12 @@ export function ruleStyle(themeId: string = DEFAULT_COLOR_THEME_ID): ShapeStyle 
   const theme = getColorTheme(themeId);
   return { fill: "none", stroke: theme.primary[0], strokeWidth: 2 };
 }
+
+// Parent-child connector lines for ツリー図 ("pyramid" pattern - see
+// pyramid.ts's regenerateTreeConnectors in sync.ts). Deliberately a fixed
+// pale gray rather than a theme color: the connecting lines are meant to read
+// as neutral structure regardless of which color theme (or how dark the
+// node's own fill) is in use, matching a typical org-chart/tree-diagram look.
+export function treeConnectorStyle(): ShapeStyle {
+  return { fill: "none", stroke: "#c7c7c7", strokeWidth: 1.5 };
+}
