@@ -20,6 +20,7 @@ const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
   pyramidChart: "ピラミッド図",
   schedule: "スケジュール",
   verticalFlow: "フロー図（縦型）",
+  horizontalFlow: "フロー図（横型）",
 };
 
 const BULLET_MATRIX_IMPORT_PLACEHOLDER =

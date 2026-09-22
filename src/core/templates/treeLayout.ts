@@ -12,9 +12,13 @@ export interface LayoutNode {
   y: number;
   width: number;
   height: number;
-  // "text" (default) generates a labeled box; "ellipse"/"rect" generate a
-  // plain outline with no label (Venn's set circles - see venn.ts; a matrix
-  // quadrant's background square - see matrix.ts); "label" generates
+  // "text" (default) generates a labeled box; "ellipse"/"rect" generate an
+  // unlabeled shape - by default a plain outline (Venn's set circles - see
+  // venn.ts; a matrix quadrant's background square - see matrix.ts), or a
+  // solid fill when `fillColorSlot` is set (horizontalFlow's step circles -
+  // see horizontalFlow.ts; unlike "heading" below, there's no text on the
+  // shape itself, since it has none of its own - any label is a separate
+  // "label"-kind shape drawn on top); "label" generates
   // borderless text drawn on top of another shape rather than its own layer
   // (Venn's set names; headingBullets' bullet items; bulletMatrix's title/
   // detail lines within a cell); "heading" generates a solid-filled,
@@ -57,7 +61,10 @@ export interface LayoutNode {
   // headingStyle in style.ts). Defaults to primary[0] (headingBullets' navy);
   // bulletMatrix's row/column headers pass a different slot so all three
   // kinds of heading (this pattern's two, plus headingBullets') read as
-  // visually distinct roles.
+  // visually distinct roles. For an "ellipse"/"rect" kind: set to fill the
+  // shape solidly (style.ts's filledShapeStyle) instead of the default
+  // unfilled outline - undefined keeps it unfilled (horizontalFlow's first,
+  // "casual/optional" step circle - see horizontalFlow.ts).
   fillColorSlot?: ThemeColorSlot;
   // Set on a "label" kind to render this literal prefix (e.g. "• ", "- ")
   // ahead of the text without it being part of the shape's editable content
@@ -71,6 +78,9 @@ export interface LayoutNode {
   // pyramidChart's title/header divider) instead of the default dashed
   // separator (style.ts's separatorStyle, used by headingBullets/bulletMatrix
   // and by pyramidChart's own row separators). Undefined behaves as true.
+  // For an "ellipse"/"rect" kind, the opposite default applies: true dashes
+  // the (otherwise solid) outline/border - horizontalFlow's first step
+  // circle, undefined/false behaves as a plain solid border.
   dashed?: boolean;
   // For a "line" kind: true generates a directional ConnectorShape
   // (`type: "arrow"`, marker-tipped - see ConnectorRenderer.tsx) from (x, y)

@@ -105,10 +105,25 @@ export function defaultShapeStyle(themeId: string = DEFAULT_COLOR_THEME_ID): Sha
 // rather than a labeled box: venn's set circles (so overlap regions and the
 // item labels placed on top stay legible) and a matrix quadrant's background
 // square (so it doesn't double up on top of its own title/item labels, which
-// keep the normal filled style).
-export function outlineStyle(themeId: string = DEFAULT_COLOR_THEME_ID): ShapeStyle {
+// keep the normal filled style). `dashed` swaps the border for the same dash
+// pattern separatorStyle uses - horizontalFlow's first, "casual/optional"
+// step circle (doc/spec.md §6.2.8), which needs to read as unfilled AND
+// visually distinct from a normal (solid-outline) shape.
+export function outlineStyle(themeId: string = DEFAULT_COLOR_THEME_ID, dashed = false): ShapeStyle {
   const theme = getColorTheme(themeId);
-  return { fill: "none", stroke: theme.primary[0], strokeWidth: 2 };
+  return { fill: "none", stroke: theme.primary[0], strokeWidth: 2, ...(dashed ? { strokeDasharray: "4 3" } : {}) };
+}
+
+// A filled closed shape (ellipse/rect) whose own fill IS its identity -
+// horizontalFlow's step circles (doc/spec.md §6.2.8), which - unlike every
+// other filled generated shape so far - has no text of its own (its labels
+// are separate "label"-kind shapes drawn on top, same layering as venn's set
+// name over its circle). Plain fill+stroke only, since there's no text here
+// for headingStyle's font/textColor fields to apply to.
+export function filledShapeStyle(themeId: string = DEFAULT_COLOR_THEME_ID, fillColorSlot: ThemeColorSlot): ShapeStyle {
+  const theme = getColorTheme(themeId);
+  const fill = resolveColorSlot(theme, fillColorSlot);
+  return { fill, stroke: fill, strokeWidth: 2 };
 }
 
 // Borderless text, for a generated label drawn directly on top of another

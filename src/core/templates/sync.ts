@@ -5,6 +5,7 @@ import type { LineShape, Shape, ShapeId, TextShape } from "../model/shape";
 import {
   contrastTextColor,
   defaultShapeStyle,
+  filledShapeStyle,
   getColorTheme,
   headingStyle,
   labelStyle,
@@ -26,6 +27,7 @@ import { layoutPyramidChart } from "./pyramidChart";
 import { layoutSchedule } from "./schedule";
 import type { Milestone, ScheduleParams } from "./schedule";
 import { layoutVerticalFlow } from "./verticalFlow";
+import { layoutHorizontalFlow } from "./horizontalFlow";
 import type { LayoutNode } from "./treeLayout";
 
 // All functions here take a plain Document and return a new plain Document -
@@ -46,7 +48,8 @@ function isFullyRelayoutedPattern(pattern: StructuredBlock["pattern"]): boolean 
     pattern === "bulletMatrix" ||
     pattern === "pyramidChart" ||
     pattern === "schedule" ||
-    pattern === "verticalFlow"
+    pattern === "verticalFlow" ||
+    pattern === "horizontalFlow"
   );
 }
 
@@ -136,6 +139,8 @@ function rawLayoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[
       return layoutSchedule(outline, scheduleParams(params));
     case "verticalFlow":
       return layoutVerticalFlow(outline);
+    case "horizontalFlow":
+      return layoutHorizontalFlow(outline);
     default:
       return [];
   }
@@ -166,7 +171,9 @@ function styleFor(themeId: string, layoutNode: LayoutNode): ShapeStyle {
   const theme = getColorTheme(themeId);
   const base: ShapeStyle =
     layoutNode.kind === "ellipse" || layoutNode.kind === "rect"
-      ? outlineStyle(themeId)
+      ? layoutNode.fillColorSlot !== undefined
+        ? filledShapeStyle(themeId, layoutNode.fillColorSlot)
+        : outlineStyle(themeId, layoutNode.dashed === true)
       : layoutNode.kind === "line"
         ? layoutNode.dashed === false
           ? ruleStyle(themeId)
@@ -950,13 +957,23 @@ function relayoutBlock(doc: Document, block: StructuredBlock, newOutline: Outlin
 // (verticalFlow.ts) are untracked shapes too, so reordering steps without a
 // full regenerate would leave them pointing at stale positions.
 //
+// horizontalFlow needs it for BOTH reasons at once: its circle-to-circle
+// arrows are untracked shapes like verticalFlow's, AND each circle's own
+// fill/dashed styling (horizontalFlow.ts's circleColorSlot, "first step is
+// unfilled") depends on its INDEX among siblings like pyramidChart's band
+// taper - relayoutBlock repositions a shape but never restyles it, so a
+// reordered circle would keep its old color/fill.
+//
 // Either way, "pyramid"/"logicTree"'s connector lines (regenerateTreeConnectors)
 // need a resync too: relayoutBlock repositions every ordinary node shape but,
 // having no templateNodeIds, never touches connector shapes - which would
 // otherwise keep pointing at their pre-restructure positions.
 function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline: OutlineNode[]): Document {
   const next =
-    block.pattern === "pyramidChart" || block.pattern === "schedule" || block.pattern === "verticalFlow"
+    block.pattern === "pyramidChart" ||
+    block.pattern === "schedule" ||
+    block.pattern === "verticalFlow" ||
+    block.pattern === "horizontalFlow"
       ? regenerateBlockShapes(doc, block, newOutline)
       : relayoutBlock(doc, block, newOutline);
   return regenerateTreeConnectors(next, block.id);

@@ -16,6 +16,7 @@ const PATTERNS: { id: StructuredBlock["pattern"]; label: string; available: bool
   { id: "pyramidChart", label: "ピラミッド図", available: true },
   { id: "schedule", label: "スケジュール", available: true },
   { id: "verticalFlow", label: "フロー図（縦型）", available: true },
+  { id: "horizontalFlow", label: "フロー図（横型）", available: true },
 ];
 
 interface TemplateLibraryPanelProps {
