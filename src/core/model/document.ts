@@ -31,7 +31,8 @@ export interface StructuredBlock {
     | "verticalFlow"
     | "horizontalFlow"
     | "flowSchedule"
-    | "flowScheduleHorizontal";
+    | "flowScheduleHorizontal"
+    | "timeline";
   outline: OutlineNode[];
   params: Record<string, unknown>;
   generatedShapeIds: ShapeId[];

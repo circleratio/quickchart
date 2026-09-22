@@ -94,6 +94,13 @@ export interface LayoutNode {
   // other "rect" so far, e.g. matrix's quadrant background, is
   // square-cornered). Undefined/0 behaves as a plain square corner.
   cornerRadius?: number;
+  // For a "line" kind: renders with `style.ts`'s `timelineTrackStyle` (a
+  // fixed, theme-independent gray, thicker than the usual theme-colored
+  // dashed/solid rule) instead of the usual dashed/solid styling - timeline's
+  // single vertical axis line (doc/spec.md §6.2.11), which reads as neutral
+  // structure like a tree connector rather than themed chart content.
+  // Undefined/false behaves as a normal "line".
+  trackStyle?: boolean;
 }
 
 export interface TreeLayoutOptions {

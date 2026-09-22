@@ -23,6 +23,7 @@ const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
   horizontalFlow: "フロー図（横型）",
   flowSchedule: "フロースケジュール（縦）",
   flowScheduleHorizontal: "フロースケジュール（横）",
+  timeline: "タイムライン",
 };
 
 const BULLET_MATRIX_IMPORT_PLACEHOLDER =
@@ -76,6 +77,7 @@ export function StructuredTextPanel() {
   const updatePyramidChartTitle = useDocumentStore((s) => s.updatePyramidChartTitle);
   const updateFlowScheduleTitle = useDocumentStore((s) => s.updateFlowScheduleTitle);
   const updateFlowScheduleHorizontalTitle = useDocumentStore((s) => s.updateFlowScheduleHorizontalTitle);
+  const updateTimelineTitle = useDocumentStore((s) => s.updateTimelineTitle);
 
   const activeBlockId = useStructuredEditorStore((s) => s.activeBlockId);
   const setActiveBlockId = useStructuredEditorStore((s) => s.setActiveBlockId);
@@ -175,6 +177,14 @@ export function StructuredTextPanel() {
         />
       )}
 
+      {block.pattern === "timeline" && (
+        <PyramidChartTitleInput
+          key={`${block.id}-title`}
+          title={typeof block.params.title === "string" ? block.params.title : ""}
+          onCommit={(title) => updateTimelineTitle(block.id, title)}
+        />
+      )}
+
       {block.outline.length === 0 ? (
         <button type="button" onClick={() => addFirstOutlineNode(block.id)}>
           + 最初の項目を追加
@@ -265,11 +275,11 @@ function MatrixAxisLabelInputs({
 }
 
 // A single title field - pyramidChart's overall title (doc/spec.md §6.2.5)
-// and both flowSchedule's (§6.2.9) and flowScheduleHorizontal's (§6.2.10)
-// share this exact shape, so all three reuse it rather than each carrying its
-// own near-identical input. Unlike MatrixAxisLabelInputs' pair, it reuses
-// that component's styling (.matrix-axis-labels) rather than needing its own
-// CSS class.
+// and flowSchedule's (§6.2.9), flowScheduleHorizontal's (§6.2.10), and
+// timeline's (§6.2.11) all share this exact shape, so every one of them
+// reuses it rather than each carrying its own near-identical input. Unlike
+// MatrixAxisLabelInputs' pair, it reuses that component's styling
+// (.matrix-axis-labels) rather than needing its own CSS class.
 function PyramidChartTitleInput({ title, onCommit }: { title: string; onCommit: (title: string) => void }) {
   const [value, setValue] = useState(title);
 
@@ -671,17 +681,21 @@ function OutlineRow({
   // count or position, so they stay fully reorderable/deletable like any
   // other node.
   const isVerticalFlowBadge = pattern === "verticalFlow" && depth === 1 && index === 0;
-  const isFixedPositionChild = isBulletMatrixCell || isPyramidChartValue || isVerticalFlowBadge;
+  // timeline's depth-1 time label (child[0], see timeline.ts) is
+  // position-locked the same way as verticalFlow's badge above - an event has
+  // exactly this one child, no sibling description lines to keep reorderable.
+  const isTimelineTimeLabel = pattern === "timeline" && depth === 1 && index === 0;
+  const isFixedPositionChild = isBulletMatrixCell || isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel;
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Tab") {
       e.preventDefault();
-      if (isPyramidChartValue || isVerticalFlowBadge) return;
+      if (isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel) return;
       if (e.shiftKey) outdentOutlineNode(blockId, node.id);
       else indentOutlineNode(blockId, node.id);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (disableAddSibling || isPyramidChartValue || isVerticalFlowBadge) return;
+      if (disableAddSibling || isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel) return;
       addOutlineSibling(blockId, node.id);
       const block = useDocumentStore.getState().document.structuredBlocks.find((b) => b.id === blockId);
       const newNodeId = block ? findNextSiblingId(block.outline, node.id) : null;
@@ -698,7 +712,7 @@ function OutlineRow({
           <input
             ref={inputRef}
             value={node.text}
-            placeholder={isVerticalFlowBadge ? "バッジ(例: STEP 0)" : "項目を入力"}
+            placeholder={isVerticalFlowBadge ? "バッジ(例: STEP 0)" : isTimelineTimeLabel ? "時刻(例: 9:00)" : "項目を入力"}
             onChange={(e) => updateOutlineNodeText(blockId, node.id, e.target.value)}
             onKeyDown={handleKeyDown}
           />
@@ -713,7 +727,7 @@ function OutlineRow({
             </button>
           </>
         )}
-        {!isPyramidChartValue && !isVerticalFlowBadge && (
+        {!isPyramidChartValue && !isVerticalFlowBadge && !isTimelineTimeLabel && (
           <button type="button" title="子を追加" onClick={() => addOutlineChild(blockId, node.id)}>
             +子
           </button>

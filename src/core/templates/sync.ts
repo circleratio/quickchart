@@ -13,6 +13,7 @@ import {
   resolveColorSlot,
   ruleStyle,
   separatorStyle,
+  timelineTrackStyle,
   treeConnectorStyle,
 } from "../model/style";
 import type { ShapeStyle } from "../model/style";
@@ -30,6 +31,7 @@ import { layoutVerticalFlow } from "./verticalFlow";
 import { layoutHorizontalFlow } from "./horizontalFlow";
 import { layoutFlowSchedule } from "./flowSchedule";
 import { layoutFlowScheduleHorizontal } from "./flowScheduleHorizontal";
+import { layoutTimeline } from "./timeline";
 import type { LayoutNode } from "./treeLayout";
 
 // All functions here take a plain Document and return a new plain Document -
@@ -53,7 +55,8 @@ function isFullyRelayoutedPattern(pattern: StructuredBlock["pattern"]): boolean 
     pattern === "verticalFlow" ||
     pattern === "horizontalFlow" ||
     pattern === "flowSchedule" ||
-    pattern === "flowScheduleHorizontal"
+    pattern === "flowScheduleHorizontal" ||
+    pattern === "timeline"
   );
 }
 
@@ -92,6 +95,11 @@ function flowScheduleTitle(params: Record<string, unknown>): string {
 // flowScheduleHorizontal shares flowSchedule's exact params.title shape
 // (doc/spec.md §6.2.10).
 function flowScheduleHorizontalTitle(params: Record<string, unknown>): string {
+  return typeof params.title === "string" ? params.title : "";
+}
+
+// timeline shares the same params.title shape (doc/spec.md §6.2.11).
+function timelineTitle(params: Record<string, unknown>): string {
   return typeof params.title === "string" ? params.title : "";
 }
 
@@ -162,6 +170,8 @@ function rawLayoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[
       return layoutFlowSchedule(outline, flowScheduleTitle(params));
     case "flowScheduleHorizontal":
       return layoutFlowScheduleHorizontal(outline, flowScheduleHorizontalTitle(params));
+    case "timeline":
+      return layoutTimeline(outline, timelineTitle(params));
     default:
       return [];
   }
@@ -196,9 +206,11 @@ function styleFor(themeId: string, layoutNode: LayoutNode): ShapeStyle {
         ? filledShapeStyle(themeId, layoutNode.fillColorSlot)
         : outlineStyle(themeId, layoutNode.dashed === true)
       : layoutNode.kind === "line"
-        ? layoutNode.dashed === false
-          ? ruleStyle(themeId)
-          : separatorStyle(themeId)
+        ? layoutNode.trackStyle
+          ? timelineTrackStyle()
+          : layoutNode.dashed === false
+            ? ruleStyle(themeId)
+            : separatorStyle(themeId)
         : layoutNode.kind === "label"
           ? labelStyle(themeId, layoutNode.fontSize)
           : layoutNode.kind === "heading" || layoutNode.kind === "polygon"
@@ -540,6 +552,12 @@ function emptyVerticalFlowStep(): OutlineNode {
   return { id: uuidv4(), text: "", children: [{ id: uuidv4(), text: "", children: [] }] };
 }
 
+// A timeline event (root outline node) needs its time child (child[0], see
+// timeline.ts) up front for the same reason emptyVerticalFlowStep above does.
+function emptyTimelineEvent(): OutlineNode {
+  return { id: uuidv4(), text: "", children: [{ id: uuidv4(), text: "", children: [] }] };
+}
+
 // A schedule bar's 2 children are position-based like pyramidChart's
 // scale/cells (doc/spec.md §6.2.6): child[0]=start date, child[1]=end date,
 // both "YYYY-MM-DD" strings entered via dedicated date inputs rather than
@@ -568,6 +586,7 @@ function newRootNode(block: StructuredBlock): OutlineNode {
   if (block.pattern === "pyramidChart") return emptyPyramidChartRow(block);
   if (block.pattern === "schedule") return emptyScheduleRow();
   if (block.pattern === "verticalFlow") return emptyVerticalFlowStep();
+  if (block.pattern === "timeline") return emptyTimelineEvent();
   return { id: uuidv4(), text: "", children: [] };
 }
 
@@ -901,6 +920,15 @@ export function updateFlowScheduleHorizontalTitle(doc: Document, blockId: string
   return regenerateBlockShapes(doc, updatedBlock, block.outline);
 }
 
+// timeline's overall title (doc/spec.md §6.2.11) - same reasoning as
+// updateFlowScheduleTitle above.
+export function updateTimelineTitle(doc: Document, blockId: string, title: string): Document {
+  const block = findBlock(doc, blockId);
+  if (!block || block.pattern !== "timeline") return doc;
+  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, title } };
+  return regenerateBlockShapes(doc, updatedBlock, block.outline);
+}
+
 // schedule's month range (doc/spec.md §6.2.6) - like pyramidChart's title,
 // just regenerates the whole (cheap, single-block) chart rather than
 // incrementally patching header shapes, since every bar's x position also
@@ -1022,11 +1050,27 @@ function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline:
     block.pattern === "verticalFlow" ||
     block.pattern === "horizontalFlow" ||
     block.pattern === "flowSchedule" ||
-    block.pattern === "flowScheduleHorizontal"
+    block.pattern === "flowScheduleHorizontal" ||
+    block.pattern === "timeline"
       ? // flowScheduleHorizontal shares flowSchedule's exact reasoning
         // (untracked title/connector shapes, plus an index-derived number
         // that relayoutBlock would never touch) - see flowSchedule's own
         // comment above.
+        //
+        // timeline needs it for a different reason than its siblings above:
+        // relayoutBlock only ever repositions a shape it can still find by
+        // nodeId in the FRESH layout - it never removes one whose nodeId no
+        // longer appears there. Indenting a root event under another root
+        // (Tab on a plain event, not its position-locked time child - see
+        // StructuredTextPanel.tsx's isTimelineTimeLabel) moves it out of
+        // layoutTimeline's top-level `outline` loop entirely, so it stops
+        // appearing in that fresh layout - relayoutBlock would leave its old
+        // dot/time/description shapes stranded on the canvas at their stale
+        // position instead of removing them. Routing through
+        // regenerateBlockShapes (which discards every old shape first)
+        // avoids that; it also keeps the single shared track line's span
+        // correct without needing its own reasoning, since regenerating from
+        // scratch is already how add/delete keeps it correct.
         regenerateBlockShapes(doc, block, newOutline)
       : relayoutBlock(doc, block, newOutline);
   return regenerateTreeConnectors(next, block.id);

@@ -777,6 +777,74 @@ describe("flowScheduleHorizontal blocks (fully-relayouted pattern)", () => {
   });
 });
 
+describe("timeline blocks (fully-relayouted pattern)", () => {
+  function timelineBlock(doc: Document) {
+    const { document, blockId } = sync.addEmptyStructuredBlock(doc, "timeline");
+    return { document: sync.addFirstOutlineNode(document, blockId), blockId };
+  }
+
+  it("fills a newly-added event with a time slot", () => {
+    const { document, blockId } = timelineBlock(createEmptyDocument());
+    const block = document.structuredBlocks.find((b) => b.id === blockId)!;
+    expect(block.outline[0].children).toHaveLength(1);
+  });
+
+  it("generates a filled dot, an untracked-by-default time label, and a description label", () => {
+    const { document, blockId } = timelineBlock(createEmptyDocument());
+    const eventId = nodeId(document, blockId, 0);
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    const dot = shapes.find((s) => s.type === "ellipse")!;
+    expect(dot.templateNodeIds).toEqual([eventId]);
+    const timeId = document.structuredBlocks[0].outline[0].children[0].id;
+    const timeLabel = shapes.find((s) => s.templateNodeIds?.includes(timeId));
+    expect(timeLabel).toBeDefined();
+  });
+
+  it("draws exactly one thick gray track line, regardless of event count", () => {
+    let { document, blockId } = timelineBlock(createEmptyDocument());
+    const firstId = nodeId(document, blockId, 0);
+    document = sync.addOutlineSibling(document, blockId, firstId);
+    document = sync.addOutlineSibling(document, blockId, document.structuredBlocks[0].outline[1].id);
+
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    const tracks = shapes.filter((s) => s.type === "arrow" || (s.type === "line" && s.style.strokeWidth > 2));
+    expect(tracks).toHaveLength(1);
+  });
+
+  it("updateTimelineTitle regenerates a title label shape with the new text", () => {
+    const { document, blockId } = timelineBlock(createEmptyDocument());
+    const next = sync.updateTimelineTitle(document, blockId, "1日のスケジュール");
+    const shapes = next.structuredBlocks[0].generatedShapeIds.map((id) => next.shapes[id]);
+    const title = shapes.find((s) => s.type === "text" && s.content === "1日のスケジュール");
+    expect(title).toBeDefined();
+  });
+
+  it("editing an event's description patches its shape's content in place without moving any shape", () => {
+    const { document, blockId } = timelineBlock(createEmptyDocument());
+    const eventId = nodeId(document, blockId, 0);
+
+    const before = document.structuredBlocks[0].generatedShapeIds.map((id) => ({ ...document.shapes[id] }));
+    const after = sync.updateOutlineNodeText(document, blockId, eventId, "出社。");
+    const afterShapes = after.structuredBlocks[0].generatedShapeIds.map((id) => after.shapes[id]);
+
+    expect(afterShapes.map((s) => ({ x: s.x, y: s.y }))).toEqual(before.map((s) => ({ x: s.x, y: s.y })));
+    const label = afterShapes.find((s) => s.type === "text" && s.templateNodeIds?.includes(eventId) && s.style.fontWeight !== "bold");
+    expect(label?.type === "text" && label.content).toBe("出社。");
+  });
+
+  it("indenting a root event under another removes its now-orphaned shapes instead of leaving them stale", () => {
+    let { document, blockId } = timelineBlock(createEmptyDocument());
+    const firstId = nodeId(document, blockId, 0);
+    document = sync.addOutlineSibling(document, blockId, firstId);
+    const secondId = document.structuredBlocks[0].outline[1].id;
+
+    document = sync.indentOutlineNode(document, blockId, secondId);
+
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    expect(shapes.some((s) => s.templateNodeIds?.includes(secondId))).toBe(false);
+  });
+});
+
 describe("schedule blocks (fully-relayouted pattern)", () => {
   function scheduleBlock(doc: Document) {
     const { document, blockId } = sync.addEmptyStructuredBlock(doc, "schedule");

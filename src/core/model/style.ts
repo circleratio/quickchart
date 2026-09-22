@@ -200,3 +200,14 @@ export function ruleStyle(themeId: string = DEFAULT_COLOR_THEME_ID): ShapeStyle 
 export function treeConnectorStyle(): ShapeStyle {
   return { fill: "none", stroke: "#c7c7c7", strokeWidth: 1.5 };
 }
+
+// タイムライン's vertical track (templates/timeline.ts, doc/spec.md §6.2.11) -
+// the same fixed, theme-independent pale gray as treeConnectorStyle (a
+// structural guide, not themed content) but visibly thicker, matching the
+// reference image's chunky bar rather than a thin connector line. Kept as its
+// own function rather than a treeConnectorStyle parameter since the two
+// express different roles (a tree's parent-child link vs. a timeline's single
+// continuous axis) even though their color coincides.
+export function timelineTrackStyle(): ShapeStyle {
+  return { fill: "none", stroke: "#c7c7c7", strokeWidth: 6 };
+}
