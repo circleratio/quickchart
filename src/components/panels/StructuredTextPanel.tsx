@@ -19,6 +19,7 @@ const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
   bulletMatrix: "箇条書きマトリクス",
   pyramidChart: "ピラミッド図",
   schedule: "スケジュール",
+  verticalFlow: "フロー図（縦型）",
 };
 
 const BULLET_MATRIX_IMPORT_PLACEHOLDER =
@@ -594,12 +595,14 @@ function OutlineRow({
   depth,
   disableAddSibling,
   pattern,
+  index,
 }: {
   node: OutlineNode;
   blockId: string;
   depth: number;
   disableAddSibling?: boolean;
   pattern: StructuredBlock["pattern"];
+  index?: number;
 }) {
   const updateOutlineNodeText = useDocumentStore((s) => s.updateOutlineNodeText);
   const addOutlineChild = useDocumentStore((s) => s.addOutlineChild);
@@ -638,17 +641,23 @@ function OutlineRow({
   // placeholder; only reordering/deleting/nesting it (which would shift every
   // later sibling's position) is disallowed.
   const isPyramidChartValue = pattern === "pyramidChart" && depth === 1;
-  const isFixedPositionChild = isBulletMatrixCell || isPyramidChartValue;
+  // verticalFlow's depth-1 badge (child[0], see verticalFlow.ts) is
+  // position-locked the same way as pyramidChart's depth-1 values, but only
+  // at position 0 - its sibling description lines (child[1..]) have no fixed
+  // count or position, so they stay fully reorderable/deletable like any
+  // other node.
+  const isVerticalFlowBadge = pattern === "verticalFlow" && depth === 1 && index === 0;
+  const isFixedPositionChild = isBulletMatrixCell || isPyramidChartValue || isVerticalFlowBadge;
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Tab") {
       e.preventDefault();
-      if (isPyramidChartValue) return;
+      if (isPyramidChartValue || isVerticalFlowBadge) return;
       if (e.shiftKey) outdentOutlineNode(blockId, node.id);
       else indentOutlineNode(blockId, node.id);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (disableAddSibling || isPyramidChartValue) return;
+      if (disableAddSibling || isPyramidChartValue || isVerticalFlowBadge) return;
       addOutlineSibling(blockId, node.id);
       const block = useDocumentStore.getState().document.structuredBlocks.find((b) => b.id === blockId);
       const newNodeId = block ? findNextSiblingId(block.outline, node.id) : null;
@@ -665,7 +674,7 @@ function OutlineRow({
           <input
             ref={inputRef}
             value={node.text}
-            placeholder="項目を入力"
+            placeholder={isVerticalFlowBadge ? "バッジ(例: STEP 0)" : "項目を入力"}
             onChange={(e) => updateOutlineNodeText(blockId, node.id, e.target.value)}
             onKeyDown={handleKeyDown}
           />
@@ -680,7 +689,7 @@ function OutlineRow({
             </button>
           </>
         )}
-        {!isPyramidChartValue && (
+        {!isPyramidChartValue && !isVerticalFlowBadge && (
           <button type="button" title="子を追加" onClick={() => addOutlineChild(blockId, node.id)}>
             +子
           </button>
@@ -691,8 +700,8 @@ function OutlineRow({
           </button>
         )}
       </div>
-      {node.children.map((child) => (
-        <OutlineRow key={child.id} node={child} blockId={blockId} depth={depth + 1} pattern={pattern} />
+      {node.children.map((child, i) => (
+        <OutlineRow key={child.id} node={child} blockId={blockId} depth={depth + 1} pattern={pattern} index={i} />
       ))}
     </div>
   );

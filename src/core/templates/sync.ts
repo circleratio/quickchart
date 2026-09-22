@@ -25,6 +25,7 @@ import { layoutBulletMatrix } from "./bulletMatrix";
 import { layoutPyramidChart } from "./pyramidChart";
 import { layoutSchedule } from "./schedule";
 import type { Milestone, ScheduleParams } from "./schedule";
+import { layoutVerticalFlow } from "./verticalFlow";
 import type { LayoutNode } from "./treeLayout";
 
 // All functions here take a plain Document and return a new plain Document -
@@ -44,7 +45,8 @@ function isFullyRelayoutedPattern(pattern: StructuredBlock["pattern"]): boolean 
     pattern === "headingBullets" ||
     pattern === "bulletMatrix" ||
     pattern === "pyramidChart" ||
-    pattern === "schedule"
+    pattern === "schedule" ||
+    pattern === "verticalFlow"
   );
 }
 
@@ -132,6 +134,8 @@ function rawLayoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[
       return layoutPyramidChart(outline, pyramidChartColumnHeaders(params), pyramidChartTitle(params));
     case "schedule":
       return layoutSchedule(outline, scheduleParams(params));
+    case "verticalFlow":
+      return layoutVerticalFlow(outline);
     default:
       return [];
   }
@@ -497,6 +501,17 @@ function emptyPyramidChartRow(block: StructuredBlock): OutlineNode {
   };
 }
 
+// A verticalFlow step (root outline node) needs its badge child (child[0],
+// see verticalFlow.ts) up front for the same reason emptyPyramidChartRow
+// above does - without it, a freshly-added step would have no badge-shaped
+// slot for the generic outline editor to fill in (its "+子" just appends a
+// plain node, which would land at position 0 and be misread as the badge
+// only by accident of ordering). Unlike pyramidChart's cells, description
+// lines (child[1..]) have no fixed count, so only the badge is prefilled.
+function emptyVerticalFlowStep(): OutlineNode {
+  return { id: uuidv4(), text: "", children: [{ id: uuidv4(), text: "", children: [] }] };
+}
+
 // A schedule bar's 2 children are position-based like pyramidChart's
 // scale/cells (doc/spec.md §6.2.6): child[0]=start date, child[1]=end date,
 // both "YYYY-MM-DD" strings entered via dedicated date inputs rather than
@@ -524,6 +539,7 @@ function newRootNode(block: StructuredBlock): OutlineNode {
   if (block.pattern === "bulletMatrix") return emptyBulletMatrixRow(block);
   if (block.pattern === "pyramidChart") return emptyPyramidChartRow(block);
   if (block.pattern === "schedule") return emptyScheduleRow();
+  if (block.pattern === "verticalFlow") return emptyVerticalFlowStep();
   return { id: uuidv4(), text: "", children: [] };
 }
 
@@ -930,13 +946,17 @@ function relayoutBlock(doc: Document, block: StructuredBlock, newOutline: Outlin
 // full regenerate would leave the whole grid/header/connector layer stale
 // against the rows' new positions.
 //
+// verticalFlow shares schedule's reason exactly: its badge-to-badge arrows
+// (verticalFlow.ts) are untracked shapes too, so reordering steps without a
+// full regenerate would leave them pointing at stale positions.
+//
 // Either way, "pyramid"/"logicTree"'s connector lines (regenerateTreeConnectors)
 // need a resync too: relayoutBlock repositions every ordinary node shape but,
 // having no templateNodeIds, never touches connector shapes - which would
 // otherwise keep pointing at their pre-restructure positions.
 function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline: OutlineNode[]): Document {
   const next =
-    block.pattern === "pyramidChart" || block.pattern === "schedule"
+    block.pattern === "pyramidChart" || block.pattern === "schedule" || block.pattern === "verticalFlow"
       ? regenerateBlockShapes(doc, block, newOutline)
       : relayoutBlock(doc, block, newOutline);
   return regenerateTreeConnectors(next, block.id);

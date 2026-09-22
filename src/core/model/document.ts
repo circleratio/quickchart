@@ -27,7 +27,8 @@ export interface StructuredBlock {
     | "headingBullets"
     | "bulletMatrix"
     | "pyramidChart"
-    | "schedule";
+    | "schedule"
+    | "verticalFlow";
   outline: OutlineNode[];
   params: Record<string, unknown>;
   generatedShapeIds: ShapeId[];
