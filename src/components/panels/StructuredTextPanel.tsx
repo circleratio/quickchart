@@ -21,6 +21,7 @@ const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
   schedule: "スケジュール",
   verticalFlow: "フロー図（縦型）",
   horizontalFlow: "フロー図（横型）",
+  flowSchedule: "フロースケジュール（縦）",
 };
 
 const BULLET_MATRIX_IMPORT_PLACEHOLDER =
@@ -72,6 +73,7 @@ export function StructuredTextPanel() {
   const replaceBulletMatrix = useDocumentStore((s) => s.replaceBulletMatrix);
   const updatePyramidChartColumns = useDocumentStore((s) => s.updatePyramidChartColumns);
   const updatePyramidChartTitle = useDocumentStore((s) => s.updatePyramidChartTitle);
+  const updateFlowScheduleTitle = useDocumentStore((s) => s.updateFlowScheduleTitle);
 
   const activeBlockId = useStructuredEditorStore((s) => s.activeBlockId);
   const setActiveBlockId = useStructuredEditorStore((s) => s.setActiveBlockId);
@@ -153,6 +155,14 @@ export function StructuredTextPanel() {
             onCommit={(headers) => updatePyramidChartColumns(block.id, headers)}
           />
         </>
+      )}
+
+      {block.pattern === "flowSchedule" && (
+        <PyramidChartTitleInput
+          key={`${block.id}-title`}
+          title={typeof block.params.title === "string" ? block.params.title : ""}
+          onCommit={(title) => updateFlowScheduleTitle(block.id, title)}
+        />
       )}
 
       {block.outline.length === 0 ? (
@@ -244,8 +254,10 @@ function MatrixAxisLabelInputs({
   );
 }
 
-// pyramidChart's overall title (doc/spec.md §6.2.5) - a single field, unlike
-// MatrixAxisLabelInputs' pair, so it reuses that component's styling
+// A single title field - pyramidChart's overall title (doc/spec.md §6.2.5)
+// and flowSchedule's (§6.2.9) share this exact shape, so both reuse it rather
+// than each carrying its own near-identical input. Unlike
+// MatrixAxisLabelInputs' pair, it reuses that component's styling
 // (.matrix-axis-labels) rather than needing its own CSS class.
 function PyramidChartTitleInput({ title, onCommit }: { title: string; onCommit: (title: string) => void }) {
   const [value, setValue] = useState(title);

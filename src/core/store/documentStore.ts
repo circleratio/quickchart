@@ -141,6 +141,7 @@ interface DocumentState {
   updateScheduleMonths: (blockId: string, months: { startYear: number; startMonth: number; columnCount: number }) => void;
   updateScheduleMilestones: (blockId: string, milestones: Milestone[]) => void;
   updateScheduleConnections: (blockId: string, connections: Record<string, string>) => void;
+  updateFlowScheduleTitle: (blockId: string, title: string) => void;
 
   // User templates (doc/spec.md §6.4): placing one adds plain shapes (no
   // structured-template linkage) - registering one is pure read + an IPC
@@ -438,6 +439,13 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
 
     updatePyramidChartTitle: (blockId, title) => {
       const next = sync.updatePyramidChartTitle(get().document, blockId, title);
+      change((draft) => {
+        Object.assign(draft, next);
+      });
+    },
+
+    updateFlowScheduleTitle: (blockId, title) => {
+      const next = sync.updateFlowScheduleTitle(get().document, blockId, title);
       change((draft) => {
         Object.assign(draft, next);
       });

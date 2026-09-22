@@ -28,6 +28,7 @@ import { layoutSchedule } from "./schedule";
 import type { Milestone, ScheduleParams } from "./schedule";
 import { layoutVerticalFlow } from "./verticalFlow";
 import { layoutHorizontalFlow } from "./horizontalFlow";
+import { layoutFlowSchedule } from "./flowSchedule";
 import type { LayoutNode } from "./treeLayout";
 
 // All functions here take a plain Document and return a new plain Document -
@@ -49,7 +50,8 @@ function isFullyRelayoutedPattern(pattern: StructuredBlock["pattern"]): boolean 
     pattern === "pyramidChart" ||
     pattern === "schedule" ||
     pattern === "verticalFlow" ||
-    pattern === "horizontalFlow"
+    pattern === "horizontalFlow" ||
+    pattern === "flowSchedule"
   );
 }
 
@@ -75,6 +77,13 @@ function pyramidChartColumnHeaders(params: Record<string, unknown>): string[] {
 }
 
 function pyramidChartTitle(params: Record<string, unknown>): string {
+  return typeof params.title === "string" ? params.title : "";
+}
+
+// flowSchedule's overall title (doc/spec.md §6.2.9) - same params.title shape
+// and reasoning as pyramidChart's above (kept separate since the two
+// patterns are otherwise unrelated in this file).
+function flowScheduleTitle(params: Record<string, unknown>): string {
   return typeof params.title === "string" ? params.title : "";
 }
 
@@ -141,6 +150,8 @@ function rawLayoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[
       return layoutVerticalFlow(outline);
     case "horizontalFlow":
       return layoutHorizontalFlow(outline);
+    case "flowSchedule":
+      return layoutFlowSchedule(outline, flowScheduleTitle(params));
     default:
       return [];
   }
@@ -862,6 +873,15 @@ export function updatePyramidChartTitle(doc: Document, blockId: string, title: s
   return regenerateBlockShapes(doc, updatedBlock, block.outline);
 }
 
+// flowSchedule's overall title (doc/spec.md §6.2.9) - same reasoning as
+// updatePyramidChartTitle above.
+export function updateFlowScheduleTitle(doc: Document, blockId: string, title: string): Document {
+  const block = findBlock(doc, blockId);
+  if (!block || block.pattern !== "flowSchedule") return doc;
+  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, title } };
+  return regenerateBlockShapes(doc, updatedBlock, block.outline);
+}
+
 // schedule's month range (doc/spec.md §6.2.6) - like pyramidChart's title,
 // just regenerates the whole (cheap, single-block) chart rather than
 // incrementally patching header shapes, since every bar's x position also
@@ -964,6 +984,14 @@ function relayoutBlock(doc: Document, block: StructuredBlock, newOutline: Outlin
 // taper - relayoutBlock repositions a shape but never restyles it, so a
 // reordered circle would keep its old color/fill.
 //
+// flowSchedule shares horizontalFlow's "both reasons" case: its row
+// separators (and title-flanking rules) are untracked shapes like
+// verticalFlow's badge arrows, AND each row heading's own "NN | " number
+// (flowSchedule.ts's rowNumberPrefix, a bulletMarker) depends on its INDEX
+// among siblings like pyramidChart's band taper - relayoutBlock repositions a
+// shape but never touches its bulletMarker, so a reordered row would keep its
+// old number.
+//
 // Either way, "pyramid"/"logicTree"'s connector lines (regenerateTreeConnectors)
 // need a resync too: relayoutBlock repositions every ordinary node shape but,
 // having no templateNodeIds, never touches connector shapes - which would
@@ -973,7 +1001,8 @@ function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline:
     block.pattern === "pyramidChart" ||
     block.pattern === "schedule" ||
     block.pattern === "verticalFlow" ||
-    block.pattern === "horizontalFlow"
+    block.pattern === "horizontalFlow" ||
+    block.pattern === "flowSchedule"
       ? regenerateBlockShapes(doc, block, newOutline)
       : relayoutBlock(doc, block, newOutline);
   return regenerateTreeConnectors(next, block.id);

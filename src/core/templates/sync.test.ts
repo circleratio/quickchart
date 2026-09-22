@@ -669,6 +669,61 @@ describe("pyramidChart blocks (fully-relayouted pattern)", () => {
   });
 });
 
+describe("flowSchedule blocks (fully-relayouted pattern)", () => {
+  function flowScheduleBlock(doc: Document) {
+    const { document, blockId } = sync.addEmptyStructuredBlock(doc, "flowSchedule");
+    return { document: sync.addFirstOutlineNode(document, blockId), blockId };
+  }
+
+  it("generates one heading shape per row, numbered '01 | ' via bulletMarker rather than baked into content", () => {
+    const { document, blockId } = flowScheduleBlock(createEmptyDocument());
+    const rowId = nodeId(document, blockId, 0);
+    const heading = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]).find((s) => s.templateNodeIds?.includes(rowId))!;
+    expect(heading.type === "text" && heading.content).toBe("");
+    expect(heading.type === "text" && heading.bulletMarker).toBe("01 | ");
+  });
+
+  it("updateFlowScheduleTitle regenerates a title label shape with the new text", () => {
+    const { document, blockId } = flowScheduleBlock(createEmptyDocument());
+    const next = sync.updateFlowScheduleTitle(document, blockId, "フロースケジュール（縦）");
+    const shapes = next.structuredBlocks[0].generatedShapeIds.map((id) => next.shapes[id]);
+    const title = shapes.find((s) => s.type === "text" && s.content === "フロースケジュール（縦）");
+    expect(title).toBeDefined();
+  });
+
+  it("editing a row's text patches its shape's content in place without moving it or touching its number", () => {
+    const { document, blockId } = flowScheduleBlock(createEmptyDocument());
+    const rowId = nodeId(document, blockId, 0);
+
+    const before = document.structuredBlocks[0].generatedShapeIds.map((id) => ({ ...document.shapes[id] }));
+    const after = sync.updateOutlineNodeText(document, blockId, rowId, "お問い合わせ");
+    const afterShapes = after.structuredBlocks[0].generatedShapeIds.map((id) => after.shapes[id]);
+
+    expect(afterShapes.map((s) => ({ x: s.x, y: s.y }))).toEqual(before.map((s) => ({ x: s.x, y: s.y })));
+    const edited = afterShapes.find((s) => s.templateNodeIds?.includes(rowId))!;
+    expect(edited.type === "text" && edited.content).toBe("お問い合わせ");
+    expect(edited.type === "text" && edited.bulletMarker).toBe("01 | ");
+  });
+
+  it("reordering rows (move up/down) regenerates each heading's number for its new index", () => {
+    let { document, blockId } = flowScheduleBlock(createEmptyDocument());
+    document = sync.updateOutlineNodeText(document, blockId, nodeId(document, blockId, 0), "お問い合わせ");
+    const firstId = nodeId(document, blockId, 0);
+    document = sync.addOutlineSibling(document, blockId, firstId);
+    document = sync.updateOutlineNodeText(document, blockId, document.structuredBlocks[0].outline[1].id, "ヒアリング");
+    const secondId = document.structuredBlocks[0].outline[1].id;
+
+    document = sync.moveOutlineNode(document, blockId, secondId, "up");
+
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    const movedHeading = shapes.find((s) => s.templateNodeIds?.includes(secondId))!;
+    const pushedHeading = shapes.find((s) => s.templateNodeIds?.includes(firstId))!;
+    expect(movedHeading.type === "text" && movedHeading.content).toBe("ヒアリング");
+    expect(movedHeading.type === "text" && movedHeading.bulletMarker).toBe("01 | ");
+    expect(pushedHeading.type === "text" && pushedHeading.bulletMarker).toBe("02 | ");
+  });
+});
+
 describe("schedule blocks (fully-relayouted pattern)", () => {
   function scheduleBlock(doc: Document) {
     const { document, blockId } = sync.addEmptyStructuredBlock(doc, "schedule");

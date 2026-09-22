@@ -29,7 +29,8 @@ export interface StructuredBlock {
     | "pyramidChart"
     | "schedule"
     | "verticalFlow"
-    | "horizontalFlow";
+    | "horizontalFlow"
+    | "flowSchedule";
   outline: OutlineNode[];
   params: Record<string, unknown>;
   generatedShapeIds: ShapeId[];
