@@ -11,7 +11,7 @@ import type { OutlineNode, StructuredBlock } from "../../core/model/document";
 
 const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
   pyramid: "ツリー図",
-  logicTree: "ロジックツリー",
+  logicTree: "ロジックツリー図",
   matrix: "マトリクス",
   venn: "ベン図",
   headingBullets: "見出し付き箇条書き",
