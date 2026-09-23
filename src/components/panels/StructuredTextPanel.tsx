@@ -25,6 +25,7 @@ const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
   flowScheduleHorizontal: "フロースケジュール（横）",
   timeline: "タイムライン",
   beforeAfter: "ビフォーアフター（縦）",
+  beforeAfterHorizontal: "ビフォーアフター（横）",
 };
 
 const BULLET_MATRIX_IMPORT_PLACEHOLDER =
@@ -53,6 +54,16 @@ function pyramidChartColumnHeaders(params: Record<string, unknown>): string[] {
   return Array.isArray(raw) ? raw.filter((h): h is string => typeof h === "string") : [];
 }
 
+// beforeAfterHorizontal's two column headers (doc/spec.md §6.2.13) - a fixed
+// pair rather than bulletMatrix's/pyramidChart's dynamic list, since this
+// pattern always has exactly a "before" and an "after" column.
+function beforeAfterHorizontalLabels(params: Record<string, unknown>): { beforeLabel: string; afterLabel: string } {
+  return {
+    beforeLabel: typeof params.beforeLabel === "string" ? params.beforeLabel : "",
+    afterLabel: typeof params.afterLabel === "string" ? params.afterLabel : "",
+  };
+}
+
 // Matrix is fixed at 4 quadrants; Venn's root count follows params.setCount
 // (2-3). Other patterns have no root limit. See doc/spec.md §6.2.1/§6.2.2 -
 // the UI is expected to prevent exceeding these, with matrix.ts/venn.ts's own
@@ -79,6 +90,7 @@ export function StructuredTextPanel() {
   const updateFlowScheduleTitle = useDocumentStore((s) => s.updateFlowScheduleTitle);
   const updateFlowScheduleHorizontalTitle = useDocumentStore((s) => s.updateFlowScheduleHorizontalTitle);
   const updateTimelineTitle = useDocumentStore((s) => s.updateTimelineTitle);
+  const updateBeforeAfterHorizontalLabels = useDocumentStore((s) => s.updateBeforeAfterHorizontalLabels);
 
   const activeBlockId = useStructuredEditorStore((s) => s.activeBlockId);
   const setActiveBlockId = useStructuredEditorStore((s) => s.setActiveBlockId);
@@ -186,6 +198,14 @@ export function StructuredTextPanel() {
         />
       )}
 
+      {block.pattern === "beforeAfterHorizontal" && (
+        <BeforeAfterHorizontalLabelInputs
+          key={block.id}
+          labels={beforeAfterHorizontalLabels(block.params)}
+          onCommit={(labels) => updateBeforeAfterHorizontalLabels(block.id, labels)}
+        />
+      )}
+
       {block.outline.length === 0 ? (
         <button type="button" onClick={() => addFirstOutlineNode(block.id)}>
           + 最初の項目を追加
@@ -270,6 +290,38 @@ function MatrixAxisLabelInputs({
       <label>
         縦軸
         <input value={y} onChange={(e) => setY(e.target.value)} onBlur={() => onCommit({ axisYLabel: y })} />
+      </label>
+    </div>
+  );
+}
+
+// beforeAfterHorizontal's two column headers (doc/spec.md §6.2.13) - a fixed
+// pair like MatrixAxisLabelInputs' above, so it reuses that component's
+// styling rather than needing its own CSS class.
+function BeforeAfterHorizontalLabelInputs({
+  labels,
+  onCommit,
+}: {
+  labels: { beforeLabel: string; afterLabel: string };
+  onCommit: (labels: { beforeLabel: string; afterLabel: string }) => void;
+}) {
+  const [beforeLabel, setBeforeLabel] = useState(labels.beforeLabel);
+  const [afterLabel, setAfterLabel] = useState(labels.afterLabel);
+
+  function commit() {
+    onCommit({ beforeLabel, afterLabel });
+  }
+
+  return (
+    <div className="matrix-axis-labels">
+      <h4>列見出し</h4>
+      <label>
+        Before
+        <input value={beforeLabel} onChange={(e) => setBeforeLabel(e.target.value)} onBlur={commit} />
+      </label>
+      <label>
+        After
+        <input value={afterLabel} onChange={(e) => setAfterLabel(e.target.value)} onBlur={commit} />
       </label>
     </div>
   );
@@ -695,17 +747,24 @@ function OutlineRow({
   // block's description/extra-line children are real, freely-editable
   // content, not a leaf.
   const isBeforeAfterBlock = pattern === "beforeAfter" && depth === 1;
-  const isFixedPositionChild = isBulletMatrixCell || isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock;
+  // beforeAfterHorizontal's depth-1 "before"/"after" groups (child[0]/
+  // child[1], see beforeAfterHorizontal.ts) are position-locked at BOTH
+  // positions like beforeAfter's ASIS/TOBE blocks above - own text is a real
+  // bullet line (the group's first item), so it keeps a real input; "+子"
+  // stays enabled to add the group's remaining bullet lines.
+  const isBeforeAfterHorizontalCell = pattern === "beforeAfterHorizontal" && depth === 1;
+  const isFixedPositionChild =
+    isBulletMatrixCell || isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock || isBeforeAfterHorizontalCell;
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Tab") {
       e.preventDefault();
-      if (isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock) return;
+      if (isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock || isBeforeAfterHorizontalCell) return;
       if (e.shiftKey) outdentOutlineNode(blockId, node.id);
       else indentOutlineNode(blockId, node.id);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (disableAddSibling || isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock) return;
+      if (disableAddSibling || isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock || isBeforeAfterHorizontalCell) return;
       addOutlineSibling(blockId, node.id);
       const block = useDocumentStore.getState().document.structuredBlocks.find((b) => b.id === blockId);
       const newNodeId = block ? findNextSiblingId(block.outline, node.id) : null;
@@ -731,9 +790,13 @@ function OutlineRow({
                     ? index === 0
                       ? "AS-IS(見出し)"
                       : "TO-BE(見出し)"
-                    : pattern === "beforeAfter" && depth === 0
-                      ? "バッジ(例: 現場の悩み)"
-                      : "項目を入力"
+                    : isBeforeAfterHorizontalCell
+                      ? index === 0
+                        ? "Before項目(1件目)"
+                        : "After項目(1件目)"
+                      : pattern === "beforeAfter" && depth === 0
+                        ? "バッジ(例: 現場の悩み)"
+                        : "項目を入力"
             }
             onChange={(e) => updateOutlineNodeText(blockId, node.id, e.target.value)}
             onKeyDown={handleKeyDown}

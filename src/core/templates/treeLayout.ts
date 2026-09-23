@@ -71,7 +71,13 @@ export interface LayoutNode {
   // instead of leaving it unfilled - beforeAfter's "ASIS" cell background
   // (doc/spec.md §6.2.12), which is deliberately NOT theme-colored (see
   // neutralPanelStyle's own doc comment). Ignored when `fillColorSlot` is
-  // set. Undefined/false behaves as the normal unfilled outline.
+  // set. Undefined/false behaves as the normal unfilled outline. For a
+  // "polygon" kind (which otherwise always uses `fillColorSlot`'s themed
+  // fill, defaulting to primary[0] - see headingStyle): true fills with
+  // `neutralPanelStyle` instead - beforeAfterHorizontal's connector arrow
+  // (doc/spec.md §6.2.13), a structural connector like a tree's connector
+  // line rather than themed content, so it stays neutral regardless of the
+  // active theme (same reasoning as timelineTrackStyle).
   neutralFill?: boolean;
   // Set on a "label" kind to render this literal prefix (e.g. "• ", "- ")
   // ahead of the text without it being part of the shape's editable content

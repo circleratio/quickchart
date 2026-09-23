@@ -918,6 +918,108 @@ describe("beforeAfter blocks (fully-relayouted pattern)", () => {
   });
 });
 
+describe("beforeAfterHorizontal blocks (fully-relayouted pattern)", () => {
+  function beforeAfterHorizontalBlock(doc: Document) {
+    const { document, blockId } = sync.addEmptyStructuredBlock(doc, "beforeAfterHorizontal");
+    return { document: sync.addFirstOutlineNode(document, blockId), blockId };
+  }
+
+  it("fills a newly-added row with both a 'before' and an 'after' group", () => {
+    const { document, blockId } = beforeAfterHorizontalBlock(createEmptyDocument());
+    const block = document.structuredBlocks.find((b) => b.id === blockId)!;
+    expect(block.outline[0].children).toHaveLength(2);
+  });
+
+  it("generates a heading shape for the row, plus the two column header shapes", () => {
+    const { document, blockId } = beforeAfterHorizontalBlock(createEmptyDocument());
+    const next = sync.updateBeforeAfterHorizontalLabels(document, blockId, { beforeLabel: "考慮すべき機会", afterLabel: "展開戦略" });
+    const rowId = nodeId(next, blockId, 0);
+    const shapes = next.structuredBlocks[0].generatedShapeIds.map((id) => next.shapes[id]);
+    expect(shapes.some((s) => s.templateNodeIds?.includes(rowId))).toBe(true);
+    expect(shapes.some((s) => s.type === "text" && s.content === "考慮すべき機会")).toBe(true);
+    expect(shapes.some((s) => s.type === "text" && s.content === "展開戦略")).toBe(true);
+  });
+
+  it("editing a group's own text (its first bullet item) patches its shape's content in place", () => {
+    const { document, blockId } = beforeAfterHorizontalBlock(createEmptyDocument());
+    const beforeGroupId = document.structuredBlocks[0].outline[0].children[0].id;
+
+    const before = document.structuredBlocks[0].generatedShapeIds.map((id) => ({ ...document.shapes[id] }));
+    const after = sync.updateOutlineNodeText(document, blockId, beforeGroupId, "冷凍食品は市場規模が今後も拡大");
+    const afterShapes = after.structuredBlocks[0].generatedShapeIds.map((id) => after.shapes[id]);
+
+    expect(afterShapes.map((s) => ({ x: s.x, y: s.y }))).toEqual(before.map((s) => ({ x: s.x, y: s.y })));
+    const label = afterShapes.find((s) => s.templateNodeIds?.includes(beforeGroupId));
+    expect(label?.type === "text" && label.content).toBe("冷凍食品は市場規模が今後も拡大");
+    expect(label?.type === "text" && label.bulletMarker).toBe("• ");
+  });
+
+  it("addOutlineChild on a 'before' group adds a bullet item, not a plain node at the wrong depth", () => {
+    const { document, blockId } = beforeAfterHorizontalBlock(createEmptyDocument());
+    const beforeGroupId = document.structuredBlocks[0].outline[0].children[0].id;
+    const next = sync.addOutlineChild(document, blockId, beforeGroupId);
+    const beforeGroup = next.structuredBlocks[0].outline[0].children[0];
+    expect(beforeGroup.children).toHaveLength(1);
+  });
+
+  it("editing a bullet item's text patches its shape's content in place without moving any shape", () => {
+    let { document, blockId } = beforeAfterHorizontalBlock(createEmptyDocument());
+    const beforeGroupId = document.structuredBlocks[0].outline[0].children[0].id;
+    document = sync.addOutlineChild(document, blockId, beforeGroupId);
+    const itemId = document.structuredBlocks[0].outline[0].children[0].children[0].id;
+
+    const before = document.structuredBlocks[0].generatedShapeIds.map((id) => ({ ...document.shapes[id] }));
+    const after = sync.updateOutlineNodeText(document, blockId, itemId, "冷凍食品は市場規模が今後も拡大");
+    const afterShapes = after.structuredBlocks[0].generatedShapeIds.map((id) => after.shapes[id]);
+
+    expect(afterShapes.map((s) => ({ x: s.x, y: s.y }))).toEqual(before.map((s) => ({ x: s.x, y: s.y })));
+    const label = afterShapes.find((s) => s.templateNodeIds?.includes(itemId));
+    expect(label?.type === "text" && label.content).toBe("冷凍食品は市場規模が今後も拡大");
+  });
+
+  it("updateBeforeAfterHorizontalLabels regenerates both column header shapes with the new text", () => {
+    const { document, blockId } = beforeAfterHorizontalBlock(createEmptyDocument());
+    const next = sync.updateBeforeAfterHorizontalLabels(document, blockId, { beforeLabel: "考慮すべき機会", afterLabel: "展開戦略" });
+    const shapes = next.structuredBlocks[0].generatedShapeIds.map((id) => next.shapes[id]);
+    expect(shapes.some((s) => s.type === "text" && s.content === "考慮すべき機会")).toBe(true);
+    expect(shapes.some((s) => s.type === "text" && s.content === "展開戦略")).toBe(true);
+  });
+
+  it("reordering rows (move up/down) regenerates the row-separator/arrow positions instead of leaving them stale", () => {
+    let { document, blockId } = beforeAfterHorizontalBlock(createEmptyDocument());
+    const firstId = nodeId(document, blockId, 0);
+    document = sync.addOutlineSibling(document, blockId, firstId);
+    // Give the first row extra bullet items, so its row height (and every
+    // shape's position below it) differs from a fresh, un-reordered layout -
+    // a stale relayoutBlock would misplace the untracked separator/arrow.
+    document = sync.addOutlineChild(document, blockId, document.structuredBlocks[0].outline[0].children[0].id);
+    document = sync.addOutlineChild(document, blockId, document.structuredBlocks[0].outline[0].children[0].id);
+    const secondId = document.structuredBlocks[0].outline[1].id;
+
+    document = sync.moveOutlineNode(document, blockId, secondId, "up");
+
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    const movedHeading = shapes.find((s) => s.type === "text" && s.templateNodeIds?.includes(secondId))!;
+    const pushedHeading = shapes.find((s) => s.type === "text" && s.templateNodeIds?.includes(firstId))!;
+    // secondId (now first, no bullet items) sits above firstId (now second,
+    // with the extra bullet items) - a stale layout would keep them in their
+    // original order instead.
+    expect(movedHeading.y).toBeLessThan(pushedHeading.y);
+  });
+
+  it("indenting a root row under another removes its now-orphaned shapes instead of leaving them stale", () => {
+    let { document, blockId } = beforeAfterHorizontalBlock(createEmptyDocument());
+    const firstId = nodeId(document, blockId, 0);
+    document = sync.addOutlineSibling(document, blockId, firstId);
+    const secondId = document.structuredBlocks[0].outline[1].id;
+
+    document = sync.indentOutlineNode(document, blockId, secondId);
+
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    expect(shapes.some((s) => s.templateNodeIds?.includes(secondId))).toBe(false);
+  });
+});
+
 describe("schedule blocks (fully-relayouted pattern)", () => {
   function scheduleBlock(doc: Document) {
     const { document, blockId } = sync.addEmptyStructuredBlock(doc, "schedule");

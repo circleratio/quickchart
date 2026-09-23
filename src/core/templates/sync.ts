@@ -34,6 +34,7 @@ import { layoutFlowSchedule } from "./flowSchedule";
 import { layoutFlowScheduleHorizontal } from "./flowScheduleHorizontal";
 import { layoutTimeline } from "./timeline";
 import { layoutBeforeAfter } from "./beforeAfter";
+import { layoutBeforeAfterHorizontal } from "./beforeAfterHorizontal";
 import type { LayoutNode } from "./treeLayout";
 
 // All functions here take a plain Document and return a new plain Document -
@@ -59,7 +60,8 @@ function isFullyRelayoutedPattern(pattern: StructuredBlock["pattern"]): boolean 
     pattern === "flowSchedule" ||
     pattern === "flowScheduleHorizontal" ||
     pattern === "timeline" ||
-    pattern === "beforeAfter"
+    pattern === "beforeAfter" ||
+    pattern === "beforeAfterHorizontal"
   );
 }
 
@@ -106,6 +108,17 @@ function timelineTitle(params: Record<string, unknown>): string {
   return typeof params.title === "string" ? params.title : "";
 }
 
+// beforeAfterHorizontal's two column headers (doc/spec.md §6.2.13) - a fixed
+// pair like matrix's axisXLabel/axisYLabel (MatrixAxisParams), not a dynamic
+// list like bulletMatrix's columnHeaders, since this pattern always has
+// exactly 2 content columns.
+function beforeAfterHorizontalLabels(params: Record<string, unknown>): { beforeLabel: string; afterLabel: string } {
+  return {
+    beforeLabel: typeof params.beforeLabel === "string" ? params.beforeLabel : "",
+    afterLabel: typeof params.afterLabel === "string" ? params.afterLabel : "",
+  };
+}
+
 const SCHEDULE_DEFAULT_TODAY = new Date();
 const SCHEDULE_DEFAULT_YEAR = SCHEDULE_DEFAULT_TODAY.getFullYear();
 const SCHEDULE_DEFAULT_START_MONTH = SCHEDULE_DEFAULT_TODAY.getMonth() + 1; // Date's month is 0-indexed
@@ -142,7 +155,7 @@ function layoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[], 
   // always-non-negative margin for axis labels (AXIS_MARGIN_X/Y) that must
   // stay intact, and pyramid/logicTree's cursor-based placement already
   // starts at (0, 0), so normalizing them here would be a no-op at best.
-  return pattern === "venn" || pattern === "bulletMatrix" || pattern === "pyramidChart" || pattern === "schedule"
+  return pattern === "venn" || pattern === "bulletMatrix" || pattern === "pyramidChart" || pattern === "schedule" || pattern === "beforeAfterHorizontal"
     ? normalizeToOrigin(nodes)
     : nodes;
 }
@@ -177,6 +190,10 @@ function rawLayoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[
       return layoutTimeline(outline, timelineTitle(params));
     case "beforeAfter":
       return layoutBeforeAfter(outline);
+    case "beforeAfterHorizontal": {
+      const { beforeLabel, afterLabel } = beforeAfterHorizontalLabels(params);
+      return layoutBeforeAfterHorizontal(outline, beforeLabel, afterLabel);
+    }
     default:
       return [];
   }
@@ -221,7 +238,9 @@ function styleFor(themeId: string, layoutNode: LayoutNode): ShapeStyle {
         : layoutNode.kind === "label"
           ? labelStyle(themeId, layoutNode.fontSize)
           : layoutNode.kind === "heading" || layoutNode.kind === "polygon"
-            ? headingStyle(themeId, layoutNode.fontSize, layoutNode.fillColorSlot)
+            ? layoutNode.kind === "polygon" && layoutNode.neutralFill
+              ? neutralPanelStyle()
+              : headingStyle(themeId, layoutNode.fontSize, layoutNode.fillColorSlot)
             : defaultShapeStyle(themeId);
   return {
     ...base,
@@ -583,6 +602,22 @@ function emptyBeforeAfterTopic(): OutlineNode {
   };
 }
 
+// A beforeAfterHorizontal row (root outline node) needs both its "before"
+// and "after" groups (child[0]/child[1], see beforeAfterHorizontal.ts) up
+// front, for the same reason emptyBeforeAfterTopic above does - always
+// exactly 2, unlike emptyBulletMatrixRow's variable columnHeaders-driven
+// count.
+function emptyBeforeAfterHorizontalRow(): OutlineNode {
+  return {
+    id: uuidv4(),
+    text: "",
+    children: [
+      { id: uuidv4(), text: "", children: [] },
+      { id: uuidv4(), text: "", children: [] },
+    ],
+  };
+}
+
 // A schedule bar's 2 children are position-based like pyramidChart's
 // scale/cells (doc/spec.md §6.2.6): child[0]=start date, child[1]=end date,
 // both "YYYY-MM-DD" strings entered via dedicated date inputs rather than
@@ -613,6 +648,7 @@ function newRootNode(block: StructuredBlock): OutlineNode {
   if (block.pattern === "verticalFlow") return emptyVerticalFlowStep();
   if (block.pattern === "timeline") return emptyTimelineEvent();
   if (block.pattern === "beforeAfter") return emptyBeforeAfterTopic();
+  if (block.pattern === "beforeAfterHorizontal") return emptyBeforeAfterHorizontalRow();
   return { id: uuidv4(), text: "", children: [] };
 }
 
@@ -955,6 +991,20 @@ export function updateTimelineTitle(doc: Document, blockId: string, title: strin
   return regenerateBlockShapes(doc, updatedBlock, block.outline);
 }
 
+// beforeAfterHorizontal's two column headers (doc/spec.md §6.2.13) - same
+// reasoning as updatePyramidChartTitle above, just a pair of fields instead
+// of one.
+export function updateBeforeAfterHorizontalLabels(
+  doc: Document,
+  blockId: string,
+  labels: { beforeLabel: string; afterLabel: string },
+): Document {
+  const block = findBlock(doc, blockId);
+  if (!block || block.pattern !== "beforeAfterHorizontal") return doc;
+  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, ...labels } };
+  return regenerateBlockShapes(doc, updatedBlock, block.outline);
+}
+
 // schedule's month range (doc/spec.md §6.2.6) - like pyramidChart's title,
 // just regenerates the whole (cheap, single-block) chart rather than
 // incrementally patching header shapes, since every bar's x position also
@@ -1078,7 +1128,8 @@ function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline:
     block.pattern === "flowSchedule" ||
     block.pattern === "flowScheduleHorizontal" ||
     block.pattern === "timeline" ||
-    block.pattern === "beforeAfter"
+    block.pattern === "beforeAfter" ||
+    block.pattern === "beforeAfterHorizontal"
       ? // flowScheduleHorizontal shares flowSchedule's exact reasoning
         // (untracked title/connector shapes, plus an index-derived number
         // that relayoutBlock would never touch) - see flowSchedule's own
@@ -1107,6 +1158,14 @@ function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline:
         // a root topic under another moves it out of layoutBeforeAfter's
         // top-level `outline` loop, which only a full regenerate cleans up
         // (see timeline's own comment above).
+        //
+        // beforeAfterHorizontal needs it for the same "both reasons" case,
+        // just Y instead of X: its row separators and connector arrows
+        // (beforeAfterHorizontal.ts) are untracked shapes whose Y position
+        // depends on the CUMULATIVE height of every row above them (like
+        // headingBullets' own row heights), which relayoutBlock would never
+        // recompute for them after a reorder - AND the same indent-orphaning
+        // reason as timeline/beforeAfter above.
         regenerateBlockShapes(doc, block, newOutline)
       : relayoutBlock(doc, block, newOutline);
   return regenerateTreeConnectors(next, block.id);

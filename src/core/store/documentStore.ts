@@ -144,6 +144,7 @@ interface DocumentState {
   updateFlowScheduleTitle: (blockId: string, title: string) => void;
   updateFlowScheduleHorizontalTitle: (blockId: string, title: string) => void;
   updateTimelineTitle: (blockId: string, title: string) => void;
+  updateBeforeAfterHorizontalLabels: (blockId: string, labels: { beforeLabel: string; afterLabel: string }) => void;
 
   // User templates (doc/spec.md §6.4): placing one adds plain shapes (no
   // structured-template linkage) - registering one is pure read + an IPC
@@ -462,6 +463,13 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
 
     updateTimelineTitle: (blockId, title) => {
       const next = sync.updateTimelineTitle(get().document, blockId, title);
+      change((draft) => {
+        Object.assign(draft, next);
+      });
+    },
+
+    updateBeforeAfterHorizontalLabels: (blockId, labels) => {
+      const next = sync.updateBeforeAfterHorizontalLabels(get().document, blockId, labels);
       change((draft) => {
         Object.assign(draft, next);
       });
