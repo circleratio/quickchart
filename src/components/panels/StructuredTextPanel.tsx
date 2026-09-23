@@ -26,6 +26,7 @@ const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
   timeline: "タイムライン",
   beforeAfter: "ビフォーアフター（縦）",
   beforeAfterHorizontal: "ビフォーアフター（横）",
+  chevronFlow: "フローチャート",
 };
 
 const BULLET_MATRIX_IMPORT_PLACEHOLDER =
@@ -753,18 +754,28 @@ function OutlineRow({
   // bullet line (the group's first item), so it keeps a real input; "+子"
   // stays enabled to add the group's remaining bullet lines.
   const isBeforeAfterHorizontalCell = pattern === "beforeAfterHorizontal" && depth === 1;
+  // chevronFlow's depth-1 duration (child[0], see chevronFlow.ts) is
+  // position-locked the same way as timeline's time label above; its sibling
+  // bullets (child[1..]) stay fully reorderable/deletable.
+  const isChevronFlowDuration = pattern === "chevronFlow" && depth === 1 && index === 0;
   const isFixedPositionChild =
-    isBulletMatrixCell || isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock || isBeforeAfterHorizontalCell;
+    isBulletMatrixCell ||
+    isPyramidChartValue ||
+    isVerticalFlowBadge ||
+    isTimelineTimeLabel ||
+    isBeforeAfterBlock ||
+    isBeforeAfterHorizontalCell ||
+    isChevronFlowDuration;
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Tab") {
       e.preventDefault();
-      if (isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock || isBeforeAfterHorizontalCell) return;
+      if (isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock || isBeforeAfterHorizontalCell || isChevronFlowDuration) return;
       if (e.shiftKey) outdentOutlineNode(blockId, node.id);
       else indentOutlineNode(blockId, node.id);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (disableAddSibling || isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock || isBeforeAfterHorizontalCell) return;
+      if (disableAddSibling || isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock || isBeforeAfterHorizontalCell || isChevronFlowDuration) return;
       addOutlineSibling(blockId, node.id);
       const block = useDocumentStore.getState().document.structuredBlocks.find((b) => b.id === blockId);
       const newNodeId = block ? findNextSiblingId(block.outline, node.id) : null;
@@ -796,7 +807,9 @@ function OutlineRow({
                         : "After項目(1件目)"
                       : pattern === "beforeAfter" && depth === 0
                         ? "バッジ(例: 現場の悩み)"
-                        : "項目を入力"
+                        : isChevronFlowDuration
+                          ? "所要期間(例: 1週間、空欄可)"
+                          : "項目を入力"
             }
             onChange={(e) => updateOutlineNodeText(blockId, node.id, e.target.value)}
             onKeyDown={handleKeyDown}
@@ -812,7 +825,7 @@ function OutlineRow({
             </button>
           </>
         )}
-        {!isPyramidChartValue && !isVerticalFlowBadge && !isTimelineTimeLabel && (
+        {!isPyramidChartValue && !isVerticalFlowBadge && !isTimelineTimeLabel && !isChevronFlowDuration && (
           <button type="button" title="子を追加" onClick={() => addOutlineChild(blockId, node.id)}>
             +子
           </button>

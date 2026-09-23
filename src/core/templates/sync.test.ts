@@ -845,6 +845,75 @@ describe("timeline blocks (fully-relayouted pattern)", () => {
   });
 });
 
+describe("chevronFlow blocks (fully-relayouted pattern)", () => {
+  function chevronFlowBlock(doc: Document) {
+    const { document, blockId } = sync.addEmptyStructuredBlock(doc, "chevronFlow");
+    return { document: sync.addFirstOutlineNode(document, blockId), blockId };
+  }
+
+  it("fills a newly-added step with a duration slot", () => {
+    const { document, blockId } = chevronFlowBlock(createEmptyDocument());
+    const block = document.structuredBlocks.find((b) => b.id === blockId)!;
+    expect(block.outline[0].children).toHaveLength(1);
+  });
+
+  it("draws the chevron and body box as unfilled theme-colored outlines", () => {
+    const { document } = chevronFlowBlock(createEmptyDocument());
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    const outlines = shapes.filter((s) => s.type === "polygon");
+    expect(outlines).toHaveLength(2);
+    for (const o of outlines) {
+      expect(o.style.fill).toBe("none");
+      expect(o.style.stroke).not.toBe("none");
+    }
+  });
+
+  it("editing a duration patches its shape's content in place without moving any shape", () => {
+    const { document, blockId } = chevronFlowBlock(createEmptyDocument());
+    const durationId = document.structuredBlocks[0].outline[0].children[0].id;
+
+    const before = document.structuredBlocks[0].generatedShapeIds.map((id) => ({ ...document.shapes[id] }));
+    const after = sync.updateOutlineNodeText(document, blockId, durationId, "1週間");
+    const afterShapes = after.structuredBlocks[0].generatedShapeIds.map((id) => after.shapes[id]);
+
+    expect(afterShapes.map((s) => ({ x: s.x, y: s.y }))).toEqual(before.map((s) => ({ x: s.x, y: s.y })));
+    const label = afterShapes.find((s) => s.type === "text" && s.templateNodeIds?.includes(durationId));
+    expect(label?.type === "text" && label.content).toBe("1週間");
+  });
+
+  it("renumbers the 'Step N' labels when steps are reordered", () => {
+    let { document, blockId } = chevronFlowBlock(createEmptyDocument());
+    const firstId = nodeId(document, blockId, 0);
+    document = sync.addOutlineSibling(document, blockId, firstId);
+    document = sync.updateOutlineNodeText(document, blockId, firstId, "最初");
+
+    document = sync.moveOutlineNode(document, blockId, firstId, "down");
+
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    const title = shapes.find((s) => s.type === "text" && s.content === "最初")!;
+    const number2 = shapes.find((s) => s.type === "text" && s.content === "2")!;
+    expect(title.x).toBeLessThan(number2.x + 60);
+    expect(title.x).toBeGreaterThan(number2.x - 60);
+  });
+
+  // Unlike timeline's events, an indented step doesn't vanish - it lands at
+  // child[1..] of the previous step, i.e. becomes one of its bullets - but
+  // its old chevron/body box must not be left behind.
+  it("indenting a root step under another turns it into a bullet and drops its stale chevron", () => {
+    let { document, blockId } = chevronFlowBlock(createEmptyDocument());
+    const firstId = nodeId(document, blockId, 0);
+    document = sync.addOutlineSibling(document, blockId, firstId);
+    const secondId = document.structuredBlocks[0].outline[1].id;
+
+    document = sync.indentOutlineNode(document, blockId, secondId);
+
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    expect(shapes.filter((s) => s.type === "polygon")).toHaveLength(2);
+    const bullet = shapes.find((s) => s.templateNodeIds?.includes(secondId));
+    expect(bullet?.type === "text" && bullet.bulletMarker).toBe("> ");
+  });
+});
+
 describe("beforeAfter blocks (fully-relayouted pattern)", () => {
   function beforeAfterBlock(doc: Document) {
     const { document, blockId } = sync.addEmptyStructuredBlock(doc, "beforeAfter");

@@ -14,6 +14,7 @@ import {
   neutralPanelStyle,
   ruleStyle,
   separatorStyle,
+  strokeOnlyStyle,
   timelineTrackStyle,
   treeConnectorStyle,
 } from "../model/style";
@@ -35,6 +36,7 @@ import { layoutFlowScheduleHorizontal } from "./flowScheduleHorizontal";
 import { layoutTimeline } from "./timeline";
 import { layoutBeforeAfter } from "./beforeAfter";
 import { layoutBeforeAfterHorizontal } from "./beforeAfterHorizontal";
+import { layoutChevronFlow } from "./chevronFlow";
 import type { LayoutNode } from "./treeLayout";
 
 // All functions here take a plain Document and return a new plain Document -
@@ -61,7 +63,8 @@ function isFullyRelayoutedPattern(pattern: StructuredBlock["pattern"]): boolean 
     pattern === "flowScheduleHorizontal" ||
     pattern === "timeline" ||
     pattern === "beforeAfter" ||
-    pattern === "beforeAfterHorizontal"
+    pattern === "beforeAfterHorizontal" ||
+    pattern === "chevronFlow"
   );
 }
 
@@ -194,6 +197,8 @@ function rawLayoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[
       const { beforeLabel, afterLabel } = beforeAfterHorizontalLabels(params);
       return layoutBeforeAfterHorizontal(outline, beforeLabel, afterLabel);
     }
+    case "chevronFlow":
+      return layoutChevronFlow(outline);
     default:
       return [];
   }
@@ -237,11 +242,13 @@ function styleFor(themeId: string, layoutNode: LayoutNode): ShapeStyle {
             : separatorStyle(themeId)
         : layoutNode.kind === "label"
           ? labelStyle(themeId, layoutNode.fontSize)
-          : layoutNode.kind === "heading" || layoutNode.kind === "polygon"
-            ? layoutNode.kind === "polygon" && layoutNode.neutralFill
-              ? neutralPanelStyle()
-              : headingStyle(themeId, layoutNode.fontSize, layoutNode.fillColorSlot)
-            : defaultShapeStyle(themeId);
+          : layoutNode.kind === "polygon" && layoutNode.strokeColorSlot !== undefined
+            ? strokeOnlyStyle(themeId, layoutNode.strokeColorSlot)
+            : layoutNode.kind === "heading" || layoutNode.kind === "polygon"
+              ? layoutNode.kind === "polygon" && layoutNode.neutralFill
+                ? neutralPanelStyle()
+                : headingStyle(themeId, layoutNode.fontSize, layoutNode.fillColorSlot)
+              : defaultShapeStyle(themeId);
   return {
     ...base,
     ...(layoutNode.fontWeight ? { fontWeight: layoutNode.fontWeight } : {}),
@@ -584,6 +591,13 @@ function emptyTimelineEvent(): OutlineNode {
   return { id: uuidv4(), text: "", children: [{ id: uuidv4(), text: "", children: [] }] };
 }
 
+// A chevronFlow step (root outline node) needs its duration child (child[0],
+// see chevronFlow.ts) up front for the same reason emptyVerticalFlowStep
+// above does; its bullets (child[1..]) have no fixed count.
+function emptyChevronFlowStep(): OutlineNode {
+  return { id: uuidv4(), text: "", children: [{ id: uuidv4(), text: "", children: [] }] };
+}
+
 // A beforeAfter topic (root outline node) needs both its ASIS and TOBE
 // blocks (child[0]/child[1], see beforeAfter.ts) up front for the same
 // reason emptyPyramidChartRow above does - without them, a freshly-added
@@ -649,6 +663,7 @@ function newRootNode(block: StructuredBlock): OutlineNode {
   if (block.pattern === "timeline") return emptyTimelineEvent();
   if (block.pattern === "beforeAfter") return emptyBeforeAfterTopic();
   if (block.pattern === "beforeAfterHorizontal") return emptyBeforeAfterHorizontalRow();
+  if (block.pattern === "chevronFlow") return emptyChevronFlowStep();
   return { id: uuidv4(), text: "", children: [] };
 }
 
@@ -1129,7 +1144,8 @@ function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline:
     block.pattern === "flowScheduleHorizontal" ||
     block.pattern === "timeline" ||
     block.pattern === "beforeAfter" ||
-    block.pattern === "beforeAfterHorizontal"
+    block.pattern === "beforeAfterHorizontal" ||
+    block.pattern === "chevronFlow"
       ? // flowScheduleHorizontal shares flowSchedule's exact reasoning
         // (untracked title/connector shapes, plus an index-derived number
         // that relayoutBlock would never touch) - see flowSchedule's own
@@ -1166,6 +1182,11 @@ function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline:
         // headingBullets' own row heights), which relayoutBlock would never
         // recompute for them after a reorder - AND the same indent-orphaning
         // reason as timeline/beforeAfter above.
+        //
+        // chevronFlow shares flowScheduleHorizontal's "both reasons" case:
+        // its "Step N" labels are untracked, index-derived shapes, and
+        // indenting a root step under another would strand its shapes like
+        // timeline's (see above).
         regenerateBlockShapes(doc, block, newOutline)
       : relayoutBlock(doc, block, newOutline);
   return regenerateTreeConnectors(next, block.id);

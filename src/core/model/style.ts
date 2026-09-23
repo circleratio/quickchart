@@ -224,3 +224,13 @@ export function timelineTrackStyle(): ShapeStyle {
 export function neutralPanelStyle(): ShapeStyle {
   return { fill: "#f2f2f2", stroke: "#f2f2f2", strokeWidth: 2 };
 }
+
+// An unfilled outline in a chosen theme shade - フローチャート's chevron and
+// body-box outlines (templates/chevronFlow.ts, doc/spec.md §6.2.14). Unlike
+// outlineStyle's fixed primary[0], the two outlines need different weights of
+// the same theme color (a mid-tone chevron, a pale body box) to read as
+// heading vs. container.
+export function strokeOnlyStyle(themeId: string = DEFAULT_COLOR_THEME_ID, strokeColorSlot: ThemeColorSlot): ShapeStyle {
+  const theme = getColorTheme(themeId);
+  return { fill: "none", stroke: resolveColorSlot(theme, strokeColorSlot), strokeWidth: 2 };
+}

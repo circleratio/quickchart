@@ -114,6 +114,12 @@ export interface LayoutNode {
   // structure like a tree connector rather than themed chart content.
   // Undefined/false behaves as a normal "line".
   trackStyle?: boolean;
+  // For a "polygon" kind: renders it unfilled, stroked in theme.primary[slot]
+  // (style.ts's strokeOnlyStyle), instead of the usual solid themed fill -
+  // chevronFlow's chevron and body-box outlines (doc/spec.md §6.2.14), which
+  // retrace their own path so one side stays open (see chevronFlow.ts).
+  // Takes priority over `fillColorSlot`/`neutralFill`.
+  strokeColorSlot?: ThemeColorSlot;
 }
 
 export interface TreeLayoutOptions {

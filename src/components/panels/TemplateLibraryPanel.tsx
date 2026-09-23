@@ -32,6 +32,7 @@ const PATTERN_ENTRIES: PatternEntry[] = [
       { id: "flowSchedule", label: "フロースケジュール（縦）", available: true },
       { id: "flowScheduleHorizontal", label: "フロースケジュール（横）", available: true },
       { id: "timeline", label: "タイムライン", available: true },
+      { id: "chevronFlow", label: "フローチャート", available: true },
     ],
   },
   { id: "beforeAfter", label: "ビフォーアフター（縦）", available: true, kind: "leaf" },

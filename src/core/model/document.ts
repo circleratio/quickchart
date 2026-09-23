@@ -34,7 +34,8 @@ export interface StructuredBlock {
     | "flowScheduleHorizontal"
     | "timeline"
     | "beforeAfter"
-    | "beforeAfterHorizontal";
+    | "beforeAfterHorizontal"
+    | "chevronFlow";
   outline: OutlineNode[];
   params: Record<string, unknown>;
   generatedShapeIds: ShapeId[];
