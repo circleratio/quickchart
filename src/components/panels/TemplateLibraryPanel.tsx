@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDocumentStore } from "../../core/store/documentStore";
 import { useStructuredEditorStore } from "../../core/store/structuredEditorStore";
 import { useUserTemplateRefreshStore } from "../../core/store/userTemplateStore";
@@ -6,22 +6,36 @@ import type { StructuredBlock } from "../../core/model/document";
 import type { UserTemplate } from "../../core/model/userTemplate";
 import { deleteUserTemplate, errorMessageFor, getUserTemplates } from "../../core/io/tauriApi";
 
-const PATTERNS: { id: StructuredBlock["pattern"]; label: string; available: boolean }[] = [
-  { id: "pyramid", label: "ツリー図", available: true },
-  { id: "logicTree", label: "ロジックツリー図", available: true },
-  { id: "matrix", label: "マトリクス", available: true },
-  { id: "venn", label: "ベン図", available: true },
-  { id: "headingBullets", label: "見出し付き箇条書き", available: true },
-  { id: "bulletMatrix", label: "箇条書きマトリクス", available: true },
-  { id: "pyramidChart", label: "ピラミッド図", available: true },
-  { id: "schedule", label: "スケジュール", available: true },
-  { id: "verticalFlow", label: "フロー図（縦型）", available: true },
-  { id: "horizontalFlow", label: "フロー図（横型）", available: true },
-  { id: "flowSchedule", label: "フロースケジュール（縦）", available: true },
-  { id: "flowScheduleHorizontal", label: "フロースケジュール（横）", available: true },
-  { id: "timeline", label: "タイムライン", available: true },
-  { id: "beforeAfter", label: "ビフォーアフター（縦）", available: true },
-  { id: "beforeAfterHorizontal", label: "ビフォーアフター（横）", available: true },
+type LeafPattern = { id: StructuredBlock["pattern"]; label: string; available: boolean };
+
+type PatternEntry = ({ kind: "leaf" } & LeafPattern) | { kind: "group"; label: string; children: LeafPattern[] };
+
+// The "スケジュール" group bundles the pattern's own vertical/horizontal
+// variants as a flat submenu rather than nesting a further cascade level
+// (decided with the user: a 2nd cascade level wasn't worth the extra clicks
+// for only 2 variants each).
+const PATTERN_ENTRIES: PatternEntry[] = [
+  { kind: "leaf", id: "pyramid", label: "ツリー図", available: true },
+  { kind: "leaf", id: "logicTree", label: "ロジックツリー図", available: true },
+  { kind: "leaf", id: "matrix", label: "マトリクス", available: true },
+  { kind: "leaf", id: "venn", label: "ベン図", available: true },
+  { kind: "leaf", id: "headingBullets", label: "見出し付き箇条書き", available: true },
+  { kind: "leaf", id: "bulletMatrix", label: "箇条書きマトリクス", available: true },
+  { kind: "leaf", id: "pyramidChart", label: "ピラミッド図", available: true },
+  {
+    kind: "group",
+    label: "スケジュール",
+    children: [
+      { id: "schedule", label: "ガントチャート", available: true },
+      { id: "verticalFlow", label: "フロー図（縦型）", available: true },
+      { id: "horizontalFlow", label: "フロー図（横型）", available: true },
+      { id: "flowSchedule", label: "フロースケジュール（縦）", available: true },
+      { id: "flowScheduleHorizontal", label: "フロースケジュール（横）", available: true },
+      { id: "timeline", label: "タイムライン", available: true },
+    ],
+  },
+  { id: "beforeAfter", label: "ビフォーアフター（縦）", available: true, kind: "leaf" },
+  { id: "beforeAfterHorizontal", label: "ビフォーアフター（横）", available: true, kind: "leaf" },
 ];
 
 interface TemplateLibraryPanelProps {
@@ -40,6 +54,11 @@ export function TemplateLibraryPanel({ pendingUserTemplate, onSelectUserTemplate
   const [error, setError] = useState<string | null>(null);
   const refreshToken = useUserTemplateRefreshStore((s) => s.refreshToken);
 
+  const [openGroupLabel, setOpenGroupLabel] = useState<string | null>(null);
+  const [submenuPos, setSubmenuPos] = useState<{ top: number; left: number } | null>(null);
+  const submenuRef = useRef<HTMLDivElement>(null);
+  const groupTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
   async function refresh() {
     try {
       setUserTemplates(await getUserTemplates());
@@ -55,9 +74,36 @@ export function TemplateLibraryPanel({ pendingUserTemplate, onSelectUserTemplate
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshToken]);
 
+  // Fixed positioning (computed from the trigger's own rect) rather than a
+  // CSS-hover flyout: .left-column scrolls vertically, and setting
+  // overflow-y also forces overflow-x to "auto" per spec, which would clip
+  // an absolutely-positioned flyout extending past the panel's right edge.
+  useEffect(() => {
+    if (!openGroupLabel) return;
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node;
+      if (submenuRef.current?.contains(target)) return;
+      if (groupTriggerRefs.current[openGroupLabel!]?.contains(target)) return;
+      setOpenGroupLabel(null);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [openGroupLabel]);
+
+  function toggleGroup(label: string) {
+    if (openGroupLabel === label) {
+      setOpenGroupLabel(null);
+      return;
+    }
+    const rect = groupTriggerRefs.current[label]?.getBoundingClientRect();
+    if (rect) setSubmenuPos({ top: rect.top, left: rect.right + 4 });
+    setOpenGroupLabel(label);
+  }
+
   function handlePick(pattern: StructuredBlock["pattern"]) {
     const blockId = addStructuredBlock(pattern);
     setActiveBlockId(blockId);
+    setOpenGroupLabel(null);
   }
 
   async function handleDelete(id: string) {
@@ -75,18 +121,61 @@ export function TemplateLibraryPanel({ pendingUserTemplate, onSelectUserTemplate
     <div className="template-library-panel">
       <h3>パターンライブラリ</h3>
       <div className="template-list">
-        {PATTERNS.map((pattern) => (
-          <button
-            key={pattern.id}
-            type="button"
-            disabled={!pattern.available}
-            onClick={() => handlePick(pattern.id)}
-            title={pattern.available ? undefined : "将来対応"}
-          >
-            {pattern.label}
-          </button>
-        ))}
+        {PATTERN_ENTRIES.map((entry) =>
+          entry.kind === "leaf" ? (
+            <button
+              key={entry.id}
+              type="button"
+              disabled={!entry.available}
+              onClick={() => handlePick(entry.id)}
+              title={entry.available ? undefined : "将来対応"}
+            >
+              {entry.label}
+            </button>
+          ) : (
+            <button
+              key={entry.label}
+              type="button"
+              ref={(el) => {
+                groupTriggerRefs.current[entry.label] = el;
+              }}
+              className={openGroupLabel === entry.label ? "template-group-trigger active" : "template-group-trigger"}
+              onClick={() => toggleGroup(entry.label)}
+            >
+              {entry.label}
+              <span className="template-group-arrow">▶</span>
+            </button>
+          ),
+        )}
       </div>
+
+      {openGroupLabel &&
+        submenuPos &&
+        (() => {
+          const group = PATTERN_ENTRIES.find((entry) => entry.kind === "group" && entry.label === openGroupLabel) as
+            | { kind: "group"; label: string; children: LeafPattern[] }
+            | undefined;
+          if (!group) return null;
+          return (
+            <div
+              ref={submenuRef}
+              className="template-submenu"
+              style={{ top: submenuPos.top, left: submenuPos.left }}
+            >
+              {group.children.map((child) => (
+                <button
+                  key={child.id}
+                  type="button"
+                  disabled={!child.available}
+                  onClick={() => handlePick(child.id)}
+                  title={child.available ? undefined : "将来対応"}
+                >
+                  {child.label}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
 
       <h3>マイテンプレート</h3>
       {error && <p className="template-library-error">{error}</p>}

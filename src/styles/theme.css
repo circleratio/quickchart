@@ -183,6 +183,61 @@ body {
   cursor: not-allowed;
 }
 
+.template-group-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 4px;
+  font-size: 13px;
+  border: 1px solid #d9dee5;
+  border-radius: 4px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.template-group-trigger.active {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+.template-group-arrow {
+  font-size: 10px;
+  color: #8a94a3;
+}
+
+.template-group-trigger.active .template-group-arrow {
+  color: #2563eb;
+}
+
+.template-submenu {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  background: #ffffff;
+  border: 1px solid #d9dee5;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 180px;
+}
+
+.template-submenu button {
+  padding: 8px 4px;
+  font-size: 13px;
+  border: 1px solid #d9dee5;
+  border-radius: 4px;
+  background: #ffffff;
+  cursor: pointer;
+  text-align: left;
+}
+
+.template-submenu button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .structured-text-panel {
   padding: 8px;
   font-size: 13px;
