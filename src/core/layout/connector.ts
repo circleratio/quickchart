@@ -1,3 +1,4 @@
+import type { ConnectorShape, Shape, ShapeId } from "../model/shape";
 import { rotateVector } from "./resize";
 
 export interface Point {
@@ -61,4 +62,22 @@ export function pickAnchor(shape: AnchorBox, towardPoint: Point): AnchorSide {
 // picking which shape a connector endpoint should attach to when dropped.
 export function isPointInsideBox(box: AnchorBox, point: Point): boolean {
   return point.x >= box.x && point.x <= box.x + box.width && point.y >= box.y && point.y <= box.y + box.height;
+}
+
+// Resolves a connector endpoint's current absolute position: if attached to a
+// shape, the anchor is recomputed live from that shape's current x/y/width/
+// height/rotation (this is what makes a connector "follow" the shapes it's
+// attached to - no separate subscription needed, just always reading fresh
+// state on render). Otherwise falls back to the stored free point.
+export function resolveEndpoint(
+  shape: ConnectorShape,
+  which: "from" | "to",
+  shapes: Record<ShapeId, Shape>,
+): Point {
+  const targetId = which === "from" ? shape.fromShapeId : shape.toShapeId;
+  const anchor = which === "from" ? shape.fromAnchor : shape.toAnchor;
+  const target = targetId ? shapes[targetId] : undefined;
+  if (target && anchor) return anchorPosition(target, anchor);
+  const fallback = which === "from" ? shape.points[0] : shape.points[1];
+  return fallback ?? { x: shape.x, y: shape.y };
 }

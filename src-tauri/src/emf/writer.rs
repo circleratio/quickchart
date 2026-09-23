@@ -4,7 +4,7 @@ use windows::Win32::Foundation::COLORREF;
 use windows::Win32::Graphics::Gdi::{
     CLIP_DEFAULT_PRECIS, CreateEnhMetaFileW, CreateFontW, CreatePen, CreateSolidBrush, DEFAULT_CHARSET,
     DEFAULT_PITCH, DEFAULT_QUALITY, DeleteObject, Ellipse, FF_DONTCARE, FW_NORMAL, GM_ADVANCED, GetDC,
-    ModifyWorldTransform, MWT_IDENTITY, OUT_DEFAULT_PRECIS, PS_DASH, PS_SOLID, Rectangle, ReleaseDC, SelectObject,
+    ModifyWorldTransform, MWT_IDENTITY, OUT_DEFAULT_PRECIS, PS_DASH, PS_SOLID, Rectangle, ReleaseDC, RoundRect, SelectObject,
     SetBkMode, SetGraphicsMode, SetTextAlign, SetTextColor, SetWorldTransform, TA_CENTER, TA_LEFT, TA_RIGHT,
     TA_TOP, TRANSPARENT, TextOutW, XFORM,
 };
@@ -90,6 +90,10 @@ unsafe fn draw_box(hdc: windows::Win32::Graphics::Gdi::HDC, b: &BoxCommand, elli
         let (left, top, right, bottom) = (b.x as i32, b.y as i32, (b.x + b.width) as i32, (b.y + b.height) as i32);
         if ellipse {
             let _ = Ellipse(hdc, left, top, right, bottom);
+        } else if b.corner_radius > 0.0 {
+            // RoundRect takes the corner ellipse's width/height, i.e. twice the radius.
+            let diameter = (b.corner_radius * 2.0) as i32;
+            let _ = RoundRect(hdc, left, top, right, bottom, diameter, diameter);
         } else {
             let _ = Rectangle(hdc, left, top, right, bottom);
         }

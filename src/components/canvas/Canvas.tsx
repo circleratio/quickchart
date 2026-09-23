@@ -7,12 +7,14 @@ import { createShape } from "../../core/model/shape";
 import type { ConnectorShape, Shape, ShapeId, TextShape, Tool } from "../../core/model/shape";
 import { defaultShapeStyle } from "../../core/model/style";
 import { snapValue } from "../../core/layout/snap";
-import { anchorPosition, isPointInsideBox, pickAnchor } from "../../core/layout/connector";
+import { anchorPosition, isPointInsideBox, pickAnchor, resolveEndpoint } from "../../core/layout/connector";
 import type { Point } from "../../core/layout/connector";
 import { ShapeRenderer } from "./ShapeRenderer";
-import { ConnectorRenderer, ARROW_MARKER_ID, resolveEndpoint } from "./ConnectorRenderer";
+import { ConnectorRenderer, ARROW_MARKER_ID } from "./ConnectorRenderer";
 import { SelectionOverlay } from "./SelectionOverlay";
-import { GuidesAndSnap } from "./GuidesAndSnap";
+import { AlignmentGuides, GuidesAndSnap } from "./GuidesAndSnap";
+import { computeAlignmentGuides, unionBox } from "../../core/layout/guides";
+import type { GuideLine } from "../../core/layout/guides";
 import type { UserTemplate } from "../../core/model/userTemplate";
 
 interface CanvasProps {
@@ -48,6 +50,9 @@ type DragState =
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 4;
 const GRID_SIZE = 10;
+// Alignment-guide snap distance in screen pixels (doc/spec.md §5.3), converted
+// to canvas units with the current zoom so it feels the same at any scale.
+const GUIDE_THRESHOLD_PX = 6;
 const MIN_CONNECTOR_LENGTH = 4;
 const DOUBLE_CLICK_MS = 700;
 
@@ -75,6 +80,8 @@ export function Canvas({ activeTool, onShapePlaced, pendingUserTemplate, onUserT
   const shapeElRefs = useRef<Map<ShapeId, SVGGraphicsElement>>(new Map());
   const [selectedEl, setSelectedEl] = useState<SVGGraphicsElement | null>(null);
   const [connectorDraft, setConnectorDraft] = useState<ConnectorDraft | null>(null);
+  // Display-only guides shown while dragging shapes; never stored in the document.
+  const [guideLines, setGuideLines] = useState<GuideLine[]>([]);
   const editingShapeId = useSelectionStore((state) => state.editingShapeId);
   const setEditingShapeId = useSelectionStore((state) => state.setEditingShapeId);
   const lastClickRef = useRef<{ id: ShapeId; time: number } | null>(null);
@@ -301,12 +308,32 @@ export function Canvas({ activeTool, onShapePlaced, pendingUserTemplate, onUserT
 
     const dx = dxClient / viewport.scale;
     const dy = dyClient / viewport.scale;
+
+    // Alignment guides against the shapes not being dragged (doc/spec.md §5.3).
+    // Connectors are left out on both sides: their x/y/width/height don't
+    // describe where they're drawn. An axis that snaps to a guide moves the
+    // whole selection by one shared offset and skips the grid; an axis that
+    // doesn't falls back to per-shape grid snapping as before.
+    const draggedIds = new Set(drag.ids);
+    const movingBoxes = drag.ids.flatMap((id) => {
+      const shape = document.shapes[id];
+      const start = drag.startPositions.get(id);
+      if (!shape || !start || isConnectorType(shape)) return [];
+      return [{ x: start.x + dx, y: start.y + dy, width: shape.width, height: shape.height }];
+    });
+    const otherBoxes = Object.values(document.shapes).filter(
+      (shape) => !draggedIds.has(shape.id) && !isConnectorType(shape),
+    );
+    const moving = unionBox(movingBoxes);
+    const guides = moving ? computeAlignmentGuides(moving, otherBoxes, GUIDE_THRESHOLD_PX / viewport.scale) : null;
+    setGuideLines(guides?.lines ?? []);
+
     for (const id of drag.ids) {
       const start = drag.startPositions.get(id);
       if (!start) continue;
       updateShapeTransient(id, {
-        x: snapValue(start.x + dx, GRID_SIZE),
-        y: snapValue(start.y + dy, GRID_SIZE),
+        x: guides?.snappedX ? start.x + dx + guides.dx : snapValue(start.x + dx, GRID_SIZE),
+        y: guides?.snappedY ? start.y + dy + guides.dy : snapValue(start.y + dy, GRID_SIZE),
       });
     }
   }
@@ -322,6 +349,7 @@ export function Canvas({ activeTool, onShapePlaced, pendingUserTemplate, onUserT
 
     const drag = dragRef.current;
     dragRef.current = null;
+    setGuideLines([]);
     if (drag?.kind === "shape" || drag?.kind === "connectorEndpoint") {
       // Endpoint drop: if it lands on a shape, reattach with a computed anchor.
       if (drag.kind === "connectorEndpoint") {
@@ -422,6 +450,7 @@ export function Canvas({ activeTool, onShapePlaced, pendingUserTemplate, onUserT
               />
             ),
           )}
+          <AlignmentGuides lines={guideLines} scale={viewport.scale} />
           {editingShapeId &&
             (() => {
               const editingShape = document.shapes[editingShapeId] as TextShape | undefined;

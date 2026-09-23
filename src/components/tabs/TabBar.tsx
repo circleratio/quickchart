@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useDocumentStore } from "../../core/store/documentStore";
 import { useSelectionStore } from "../../core/store/selectionStore";
 import { useStructuredEditorStore } from "../../core/store/structuredEditorStore";
+import { useTabCloseStore } from "../../core/store/tabCloseStore";
+import { ConfirmDialog } from "../common/ConfirmDialog";
 
 // One project file can hold several independent tabs/pages (doc/requirement.md
 // §4.7, doc/spec.md §5.2). Switching/adding/closing a tab clears selection and
@@ -16,10 +18,13 @@ export function TabBar() {
   const tabs = useDocumentStore((s) => s.tabs);
   const activeTabId = useDocumentStore((s) => s.activeTabId);
   const addTab = useDocumentStore((s) => s.addTab);
-  const closeTab = useDocumentStore((s) => s.closeTab);
   const switchTab = useDocumentStore((s) => s.switchTab);
   const renameTab = useDocumentStore((s) => s.renameTab);
   const reorderTabs = useDocumentStore((s) => s.reorderTabs);
+  const pendingTabId = useTabCloseStore((s) => s.pendingTabId);
+  const requestCloseTab = useTabCloseStore((s) => s.requestCloseTab);
+  const resolvePending = useTabCloseStore((s) => s.resolvePending);
+  const pendingTab = tabs.find((tab) => tab.id === pendingTabId);
 
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
@@ -37,8 +42,11 @@ export function TabBar() {
   }
 
   function handleClose(id: string) {
-    closeTab(id);
-    resetActiveTabUiState();
+    if (requestCloseTab(id) === "closed") resetActiveTabUiState();
+  }
+
+  function handleConfirmClose(choice: "close" | "cancel") {
+    if (resolvePending(choice)) resetActiveTabUiState();
   }
 
   function startRename(id: string, currentName: string) {
@@ -104,6 +112,15 @@ export function TabBar() {
       <button type="button" className="tab-bar-add" onClick={handleAdd} title="タブを追加 (Ctrl+T)">
         +
       </button>
+      <ConfirmDialog
+        open={pendingTab !== undefined}
+        message={`タブ「${pendingTab?.name ?? ""}」を閉じますか？ タブの内容は元に戻せません。`}
+        buttons={[
+          { label: "閉じる", value: "close" },
+          { label: "キャンセル", value: "cancel" },
+        ]}
+        onSelect={(value) => handleConfirmClose(value as "close" | "cancel")}
+      />
     </div>
   );
 }

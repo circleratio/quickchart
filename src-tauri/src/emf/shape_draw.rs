@@ -53,6 +53,8 @@ pub struct ShapeDto {
     pub to_anchor: Option<String>,
     #[serde(default)]
     pub points: Option<Vec<PointDto>>,
+    #[serde(default)]
+    pub corner_radius: Option<f64>,
 }
 
 pub type Rgb = (u8, u8, u8);
@@ -81,6 +83,9 @@ pub struct BoxCommand {
     pub stroke: Rgb,
     pub stroke_width: f64,
     pub dashed: bool,
+    // Rounded-corner radius (rects only; 0 = square corners, and always 0 for
+    // ellipses). Clamped to half the shorter side, same as SVG's rx.
+    pub corner_radius: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -187,6 +192,15 @@ fn box_command(shape: &ShapeDto) -> BoxCommand {
         stroke: parse_hex_color(&shape.style.stroke),
         stroke_width: shape.style.stroke_width,
         dashed: shape.style.stroke_dasharray.is_some(),
+        corner_radius: 0.0,
+    }
+}
+
+fn rect_command(shape: &ShapeDto) -> BoxCommand {
+    let max_radius = shape.width.abs().min(shape.height.abs()) / 2.0;
+    BoxCommand {
+        corner_radius: shape.corner_radius.unwrap_or(0.0).clamp(0.0, max_radius),
+        ..box_command(shape)
     }
 }
 
@@ -198,7 +212,7 @@ pub fn build_draw_commands(shapes: &[ShapeDto]) -> Vec<DrawCommand> {
 
     for shape in shapes {
         match shape.kind.as_str() {
-            "rect" => commands.push(DrawCommand::Rect(box_command(shape))),
+            "rect" => commands.push(DrawCommand::Rect(rect_command(shape))),
             "ellipse" => commands.push(DrawCommand::Ellipse(box_command(shape))),
             "line" => commands.push(DrawCommand::Line(LineCommand {
                 x1: shape.x,
@@ -299,6 +313,7 @@ mod tests {
             to_shape_id: None,
             to_anchor: None,
             points: None,
+            corner_radius: None,
         }
     }
 
@@ -325,6 +340,31 @@ mod tests {
                 assert_eq!(b.fill, (0xee, 0xf2, 0xf7));
                 assert_eq!(b.stroke, (0x1f, 0x3a, 0x5f));
             }
+            other => panic!("expected Rect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn keeps_a_rect_square_cornered_without_a_corner_radius() {
+        let shape = base_shape("a", "rect", 0.0, 0.0, 100.0, 50.0);
+        match &build_draw_commands(&[shape])[0] {
+            DrawCommand::Rect(b) => assert_eq!(b.corner_radius, 0.0),
+            other => panic!("expected Rect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn carries_a_rect_corner_radius_clamped_to_half_the_shorter_side() {
+        let mut shape = base_shape("a", "rect", 0.0, 0.0, 100.0, 50.0);
+        shape.corner_radius = Some(8.0);
+        match &build_draw_commands(&[shape.clone()])[0] {
+            DrawCommand::Rect(b) => assert_eq!(b.corner_radius, 8.0),
+            other => panic!("expected Rect, got {other:?}"),
+        }
+
+        shape.corner_radius = Some(40.0);
+        match &build_draw_commands(&[shape])[0] {
+            DrawCommand::Rect(b) => assert_eq!(b.corner_radius, 25.0),
             other => panic!("expected Rect, got {other:?}"),
         }
     }

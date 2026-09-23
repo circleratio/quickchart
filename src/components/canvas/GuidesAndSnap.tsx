@@ -1,3 +1,5 @@
+import type { GuideLine } from "../../core/layout/guides";
+
 interface Viewport {
   x: number;
   y: number;
@@ -35,5 +37,32 @@ export function GuidesAndSnap({ gridSize, viewport }: GuidesAndSnapProps) {
       {/* pointerEvents="none" so clicks pass through to the <svg> background handler in Canvas.tsx */}
       <rect x={0} y={0} width="100%" height="100%" fill={`url(#${GRID_PATTERN_ID})`} pointerEvents="none" />
     </>
+  );
+}
+
+// Same blue as selection handles, so guides read as part of the drag feedback.
+const GUIDE_COLOR = "#2563eb";
+
+interface AlignmentGuidesProps {
+  lines: GuideLine[];
+  scale: number;
+}
+
+// Alignment guides shown while dragging (doc/spec.md §5.3). Rendered in
+// Canvas.tsx inside the viewport-transformed group, after the shapes, so the
+// lines sit in front of them; stroke width is divided by the zoom to stay a
+// constant 1px on screen.
+export function AlignmentGuides({ lines, scale }: AlignmentGuidesProps) {
+  if (lines.length === 0) return null;
+  return (
+    <g pointerEvents="none">
+      {lines.map((line, i) =>
+        line.axis === "x" ? (
+          <line key={i} x1={line.position} y1={line.from} x2={line.position} y2={line.to} stroke={GUIDE_COLOR} strokeWidth={1 / scale} />
+        ) : (
+          <line key={i} x1={line.from} y1={line.position} x2={line.to} y2={line.position} stroke={GUIDE_COLOR} strokeWidth={1 / scale} />
+        ),
+      )}
+    </g>
   );
 }

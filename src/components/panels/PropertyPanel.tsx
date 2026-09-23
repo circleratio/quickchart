@@ -60,6 +60,16 @@ export function PropertyPanel() {
     commitGesture();
   }
 
+  // Rounded corners are a rect attribute rather than a separate tool (doc/spec.md
+  // §5): clamped to half the shorter side, where the corners already meet.
+  function handleCornerRadiusChange(e: ChangeEvent<HTMLInputElement>) {
+    if (!single || single.type !== "rect") return;
+    const value = Number(e.target.value);
+    if (Number.isNaN(value)) return;
+    const maxRadius = Math.min(Math.abs(single.width), Math.abs(single.height)) / 2;
+    updateShapeTransient(single.id, { cornerRadius: Math.min(Math.max(value, 0), maxRadius) });
+  }
+
   function handleNumberChange(field: NumericField, e: ChangeEvent<HTMLInputElement>) {
     if (!single) return;
     const value = Number(e.target.value);
@@ -212,6 +222,19 @@ export function PropertyPanel() {
                   onBlur={handleGestureBlur}
                 />
               </label>
+              {single.type === "rect" && (
+                <label>
+                  角丸
+                  <input
+                    type="number"
+                    min={0}
+                    value={Math.round(single.cornerRadius ?? 0)}
+                    onFocus={handleGestureFocus}
+                    onChange={handleCornerRadiusChange}
+                    onBlur={handleGestureBlur}
+                  />
+                </label>
+              )}
             </div>
           )}
 

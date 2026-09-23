@@ -41,6 +41,7 @@ fn main() {
             to_shape_id: None,
             to_anchor: None,
             points: None,
+            corner_radius: None,
         }
     }
 
@@ -72,6 +73,7 @@ fn main() {
             to_shape_id: None,
             to_anchor: None,
             points: None,
+            corner_radius: None,
         }
     }
 

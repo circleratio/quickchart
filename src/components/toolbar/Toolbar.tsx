@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useDocumentStore } from "../../core/store/documentStore";
 import { useSelectionStore } from "../../core/store/selectionStore";
 import { useStructuredEditorStore } from "../../core/store/structuredEditorStore";
@@ -73,6 +74,47 @@ export function Toolbar() {
     }
     await action();
   }
+
+  // The window close listener below is registered once, so it reaches the
+  // current guard/dialog state through refs rather than its own stale closure
+  // (handleSave captures currentFilePath at render time).
+  const guardRef = useRef(withUnsavedChangesGuard);
+  guardRef.current = withUnsavedChangesGuard;
+  const confirmOpenRef = useRef(false);
+  confirmOpenRef.current = confirmResolve !== null;
+
+  // Asks about unsaved changes when the app window is being closed, using the
+  // same save/discard/cancel flow as switching files (doc/requirement.md §4.7,
+  // doc/spec.md §9.3). Without unsaved changes the default close proceeds.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    try {
+      const appWindow = getCurrentWindow();
+      appWindow
+        .onCloseRequested(async (event) => {
+          if (!useDocumentStore.getState().isDirty) return;
+          event.preventDefault();
+          // A confirmation is already open (from an earlier close request or
+          // New/Open) - let that one decide instead of stacking a second.
+          if (confirmOpenRef.current) return;
+          await guardRef.current(() => appWindow.destroy());
+        })
+        .then((fn) => {
+          if (disposed) fn();
+          else unlisten = fn;
+        })
+        .catch(() => {
+          // Not running inside Tauri (plain `npm run dev`): nothing to guard.
+        });
+    } catch {
+      // Same as above: getCurrentWindow() throws outside Tauri.
+    }
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
 
   async function handleNew() {
     await withUnsavedChangesGuard(() => {

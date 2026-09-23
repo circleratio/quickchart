@@ -10,6 +10,7 @@ import { TabBar } from "./components/tabs/TabBar";
 import { useDocumentStore } from "./core/store/documentStore";
 import { useSelectionStore } from "./core/store/selectionStore";
 import { useStructuredEditorStore } from "./core/store/structuredEditorStore";
+import { useTabCloseStore } from "./core/store/tabCloseStore";
 import type { Tool } from "./core/model/shape";
 import type { UserTemplate } from "./core/model/userTemplate";
 import "./styles/theme.css";
@@ -38,6 +39,9 @@ function App() {
     function handleKeyDown(e: KeyboardEvent) {
       const active = window.document.activeElement;
       if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+      // The tab-close confirmation (doc/spec.md §5.2) is modal: ignore shortcuts
+      // such as a repeated Ctrl+W until it's answered.
+      if (useTabCloseStore.getState().pendingTabId !== null) return;
 
       const isMod = e.ctrlKey || e.metaKey;
       const { selectedShapeIds } = useSelectionStore.getState();
@@ -81,8 +85,7 @@ function App() {
         resetActiveTabUiState();
       } else if (isMod && e.key.toLowerCase() === "w") {
         e.preventDefault();
-        store.closeTab(store.activeTabId);
-        resetActiveTabUiState();
+        if (useTabCloseStore.getState().requestCloseTab(store.activeTabId) === "closed") resetActiveTabUiState();
       } else if (e.key === "Delete" || e.key === "Backspace") {
         for (const id of selectedShapeIds) store.removeShape(id);
         useSelectionStore.getState().clear();

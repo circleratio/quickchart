@@ -1,6 +1,6 @@
 import type { Document } from "../model/document";
 import type { Shape, ShapeId, TextShape } from "../model/shape";
-import { resolveEndpoint } from "../../components/canvas/ConnectorRenderer";
+import { resolveEndpoint } from "../layout/connector";
 
 const ARROW_MARKER_ID = "export-arrow-head";
 const DEFAULT_PADDING = 20;

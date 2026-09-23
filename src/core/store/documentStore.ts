@@ -9,44 +9,13 @@ import type { Point, Shape, ShapeId, ShapePatch } from "../model/shape";
 import type { StructuredBlock } from "../model/document";
 import type { UserTemplate } from "../model/userTemplate";
 import { instantiateTemplate } from "../model/userTemplate";
+import { cloneShapesInto, detachExternalConnections } from "../model/shapeClone";
 import { DocumentHistory } from "./historyMiddleware";
 import * as sync from "../templates/sync";
 import type { MatrixAxisParams } from "../templates/matrix";
 import type { Milestone } from "../templates/schedule";
 
 type ZOrderDirection = "front" | "back" | "forward" | "backward";
-
-// Mutates `draft.shapes`/`draft.layers` in place (Immer draft) to add clones of
-// `shapesToClone`, offset by a fixed amount. Shapes that shared a groupId keep
-// sharing a (new) groupId with each other. Returns the new shapes' ids.
-function cloneShapesInto(draft: Document, shapesToClone: Shape[]): ShapeId[] {
-  const groupIdMap = new Map<string, string>();
-  const defaultLayer = draft.layers.find((layer) => layer.id === DEFAULT_LAYER_ID);
-  let nextZIndex = Object.keys(draft.shapes).length;
-  const newIds: ShapeId[] = [];
-
-  for (const original of shapesToClone) {
-    const newId = uuidv4();
-    let newGroupId: string | undefined;
-    if (original.groupId) {
-      if (!groupIdMap.has(original.groupId)) groupIdMap.set(original.groupId, uuidv4());
-      newGroupId = groupIdMap.get(original.groupId);
-    }
-    const clone = {
-      ...original,
-      id: newId,
-      x: original.x + 20,
-      y: original.y + 20,
-      groupId: newGroupId,
-      zIndex: nextZIndex++,
-    } as Shape;
-    draft.shapes[newId] = clone;
-    newIds.push(newId);
-    defaultLayer?.shapeIds.push(newId);
-  }
-
-  return newIds;
-}
 
 // Mutates zIndex fields in `draft.shapes` in place to move `ids` front/back/etc,
 // relative to their current stacking order.
@@ -441,15 +410,21 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
     duplicateShapes: (ids) => {
       let newIds: ShapeId[] = [];
       change((draft) => {
-        const shapesToClone = ids.map((id) => draft.shapes[id]).filter((s): s is Shape => Boolean(s));
-        newIds = cloneShapesInto(draft, shapesToClone);
+        const selected = ids.map((id) => draft.shapes[id]).filter((s): s is Shape => Boolean(s));
+        newIds = cloneShapesInto(draft, detachExternalConnections(selected, draft.shapes));
       });
       return newIds;
     },
 
+    // The clipboard holds shapes already normalized against their source tab
+    // (doc/spec.md §4.1), so pasting into another tab never refers back to
+    // shapes that only exist in the tab they were copied from.
     copyShapes: (ids) =>
       set((state) => ({
-        clipboard: ids.map((id) => state.document.shapes[id]).filter((s): s is Shape => Boolean(s)),
+        clipboard: detachExternalConnections(
+          ids.map((id) => state.document.shapes[id]).filter((s): s is Shape => Boolean(s)),
+          state.document.shapes,
+        ),
       })),
 
     pasteClipboard: () => {
