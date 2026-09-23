@@ -1,6 +1,6 @@
 # quickchart 設計
 
-本書は `doc/requirement.md` を入力として、MVPの実装方針を定める。要求仕様の「9. 今後の検討事項」に列挙された未決事項は、本章で全て解決する(解決結果は「12. オープンクエスチョンへの回答」に一覧化)。
+本書は `doc/requirement.md` を入力として、MVPの実装方針を定める。要求仕様の「9. 今後の検討事項」に列挙された未決事項は、本章で全て解決する(解決結果は「15. オープンクエスチョンへの回答」に一覧化)。
 
 ## 1. アーキテクチャ概要
 
@@ -41,7 +41,7 @@ quickchart/
 │  │  │  ├─ ConnectorRenderer.tsx   # コネクタの追従描画
 │  │  │  └─ GuidesAndSnap.tsx       # グリッド・ガイド線・スナップの可視化
 │  │  ├─ tabs/
-│  │  │  └─ TabBar.tsx              # 中央上部: タブバー(§4.1, §5.2)
+│  │  │  └─ TabBar.tsx              # 中央上部: タブバー、タブを閉じる際の確認ダイアログ(§4.1, §5.2)
 │  │  ├─ common/
 │  │  │  └─ ConfirmDialog.tsx       # 汎用の確認モーダル(§9.2 の3択確認で使用)
 │  │  ├─ panels/
@@ -55,6 +55,7 @@ quickchart/
 │  ├─ core/
 │  │  ├─ model/
 │  │  │  ├─ shape.ts                # Shape 型(共通 + 各図形種別)
+│  │  │  ├─ shapeClone.ts           # 複製・コピー&ペースト用の図形複製規則(§4.1)
 │  │  │  ├─ document.ts             # Document/Layer 型(1タブ分のキャンバス内容、§3.2)
 │  │  │  ├─ project.ts              # ProjectFile/DocumentTab 型(複数タブの入れ物、§3.3)
 │  │  │  ├─ style.ts                # スタイル・配色プリセット型
@@ -62,7 +63,8 @@ quickchart/
 │  │  ├─ store/
 │  │  │  ├─ documentStore.ts        # Zustand ストア(タブ配列+アクティブタブの図形/レイヤー/構造化テキスト、§4.1)
 │  │  │  ├─ historyMiddleware.ts    # Undo/Redo(immer patch ベース、タブごとに1インスタンス)
-│  │  │  └─ selectionStore.ts       # 選択状態
+│  │  │  ├─ selectionStore.ts       # 選択状態
+│  │  │  └─ tabCloseStore.ts        # タブを閉じる要求と確認待ち状態(§5.2)
 │  │  ├─ templates/
 │  │  │  ├─ outlineParser.ts        # 階層テキスト(アウトライン記法)パーサ
 │  │  │  ├─ pyramid.ts              # ピラミッド生成規則
@@ -72,6 +74,8 @@ quickchart/
 │  │  │  └─ sync.ts                 # テキスト⇄図形の双方向同期
 │  │  ├─ layout/
 │  │  │  ├─ snap.ts                 # グリッドスナップ計算
+│  │  │  ├─ connector.ts            # アンカー位置・コネクタ端点の絶対座標の解決(resolveEndpoint。描画・SVG出力・複製規則で共用)
+│  │  │  ├─ guides.ts               # 整列ガイド線(他図形との端・中心揃え)の計算(§5.3)
 │  │  │  └─ align.ts                # 整列・分布計算
 │  │  └─ io/
 │  │     ├─ projectFile.ts          # プロジェクトファイルのシリアライズ・旧形式マイグレーション(型⇔JSON、§3.3)
@@ -173,7 +177,7 @@ interface ProjectFile {
 ```
 
 - 拡張子 `.qct`。内容は上記 `ProjectFile` を JSON にシリアライズしたものを正とする。
-- 要求仕様 4.6 は「JSON+SVGベースなど」と例示しているが、実際の保存形式は **JSON のみ** とし、SVG はプロジェクトファイルに保持しない。表示・エクスポート用の SVG はいつでも `Document` から再生成できるため、二重管理による不整合を避ける。エクスポート(4.5)は別ファイルへの書き出しという位置付けなので、この方針は要求仕様と矛盾しない。
+- 保存形式は要求仕様 4.6 のとおり **JSON のみ** とし、SVG はプロジェクトファイルに保持しない。表示・エクスポート用の SVG はいつでも `Document` から再生成できるため、二重管理による不整合を避ける。エクスポート(4.5)は別ファイルへの書き出しという位置付けなので、この方針は要求仕様と矛盾しない。
 - `formatVersion` を先頭に持たせ、将来のスキーマ変更に備えたマイグレーション関数を `projectFile.ts` に用意する。**旧形式(本機能導入前の、`ProjectFile` ではなく `Document` そのものがファイル直下にあった形式。`Document.formatVersion: 1`)のファイルを開いた場合**、`tabs` フィールドの有無で旧形式と判定し、その `Document`(旧 `formatVersion` フィールドは破棄)を唯一のタブ("タブ1")として包んだ `ProjectFile`(`formatVersion: 1`。旧 `Document.formatVersion` とは独立した、`ProjectFile` 自身の新しいバージョン系列)に変換して読み込む。この変換はファイルの再保存時に新形式で書き戻されるのみで、変換自体をユーザーに意識させない(既存の `migrateDocument` と同じ「開けば自動的に最新形式になる」方針)。
 - Rust バックエンド(`project_file.rs`/`commands/project.rs`)はファイル内容を常に opaque な `serde_json::Value` として素通しするため、この変更に伴う Rust 側の変更は不要(§10 参照)。
 
@@ -235,13 +239,19 @@ interface DocumentState {
 - **タブごとの Undo/Redo 履歴**: `DocumentHistory<Document>`(`historyMiddleware.ts`、既存のまま変更しない)のインスタンスを `Map<tabId, DocumentHistory<Document>>` として持つ(ストアのクロージャ内、既存の単一 `history` 変数と同じ持ち方)。`change()` ヘルパーはアクティブタブの `id` でこの Map を引いて(初回アクセス時に生成)、そのタブの `document` にのみ recipe を適用する。**タブを切り替えても各タブの履歴は保持されたまま**になる(切り替えて戻ってくれば続きから Undo できる)。`closeTab` はこの Map から該当エントリを破棄する。
 - **`isDirty` の管理**: `change()`(図形/構造化テンプレートの変更)と `commitGesture()`(ドラッグ等の確定)、および `addTab`/`closeTab`/`renameTab`/`reorderTabs` の呼び出し時に `true` にする。`newProject()`/`loadProject()`/`markSaved()` で `false` に戻す。ドラッグ中の中間フレーム(`updateShapeTransient`)は履歴に記録されない一時状態のため `isDirty` を更新しない(どのみち `commitGesture()` で確定時に `true` になる)。
 - **タブ切り替え時の選択状態のリセット**: `selectionStore`(選択図形・編集中図形)と `structuredEditorStore`(アクティブな構造化ブロックID)はいずれも「アクティブなタブの `document` の中身」を指す一時的なIDを保持しているため、`switchTab`(および `newProject`/`loadProject`)を呼ぶ側(`TabBar.tsx`/`Toolbar.tsx`)で `useSelectionStore.getState().clear()` と `useStructuredEditorStore.getState().setActiveBlockId(null)` を合わせて呼び出す(`Toolbar.tsx` の `handleOpen` が既に `useSelectionStore.getState().clear()` を行っている既存パターンを踏襲・拡張する)。
-- **`clipboard`(コピー&ペースト)と `copiedStyle`(書式のコピペ)はタブ非依存のまま**とする(タブをまたいでコピー&ペーストや書式コピーができる方が自然で、要求仕様もこれを禁じていないため)。
+- **`clipboard`(コピー&ペースト)と `copiedStyle`(書式のコピペ)はタブ非依存のまま**とする。これにより要求仕様 4.1・4.7 の「タブをまたぐコピー&ペースト」が成立する(あるタブで `copyShapes` した図形を、`switchTab` 後に `pasteClipboard` で別タブへ貼り付けられる)。`clipboard` は `newProject`/`loadProject` でのみ空にし、`switchTab`/`addTab`/`closeTab` では保持する。
+- **複製・貼り付け時の図形の複製規則**(`shapeClone.ts`、`duplicateShapes`/`pasteClipboard` の両方に適用)。貼り付け先が別タブの場合、元の図形が参照していたブロック・図形は貼り付け先に存在しないため、参照を持ち越さない規則にする。同じタブ内でも同じ規則を適用する(要求仕様 4.7)。
+  - **構造化テンプレートとの対応付けを外す**: 複製した図形の `templateNodeIds` を `undefined` にする。貼り付けた図形は階層テキストと同期しない通常の図形になる(ユーザーテンプレート配置時の `instantiateTemplate` と同じ扱い)。どのブロックの `generatedShapeIds` にも追加しない。
+  - **コネクタの接続先を付け替える**: 接続先(`fromShapeId`/`toShapeId`)が同時に複製される図形の場合は、複製後の新しい ID に付け替える(複製した図形同士の接続は保たれる)。接続先が複製対象に含まれない場合は接続を外し(`fromShapeId`/`fromAnchor` 等を `undefined`)、その時点の端点の絶対座標(`core/layout/connector.ts` の `resolveEndpoint`)を `points` に書き込んで自由端点にする。
+  - 接続先の座標の解決には元の図形群が必要なため、「接続を外して自由端点にする」処理は **`copyShapes` の時点**(元タブの `document.shapes` が手元にある)で行い、正規化済みの図形を `clipboard` に保持する(`detachExternalConnections(shapes, sourceShapes)`)。`duplicateShapes` は同じ関数を複製の直前に呼ぶ。ID の付け替えと `templateNodeIds` の除去は、既存の `cloneShapesInto` に組み込む(新 ID の対応表を先に作る2パス処理にする)。
+  - 貼り付け位置は従来どおり元の座標から (+20, +20) ずらす。別タブへの貼り付けでも同じ規則とする。コネクタの `points`(自由端点の絶対座標)も同じだけずらす(多角形の `points` は自身の枠に対する比率のためずらさない)。
 - **ジェスチャー中のタブ切り替えは考慮しない**: `beginGesture`/`commitGesture` の間(ポインタのドラッグ中)はキャンバスがフォーカスを持ちタブバー操作を受け付けないため、ジェスチャーの開始から終了までアクティブタブが変わることは実際には起きない前提を置く(`gestureStart` はクロージャ内の単一変数のままでよい)。
 
 ## 5. キャンバス・図形操作(自由配置)
 
 - 選択・リサイズ・回転ハンドルの実装には **react-moveable** を使う。SVG 要素(`rect`/`ellipse`/`g` など)を直接対象にでき、要求仕様の「SVGをDOMとして直接操作する」方針と合致する。
-- 整列・分布・グリッドスナップは `core/layout/align.ts` / `snap.ts` に純関数として実装し、UI から独立してユニットテスト可能にする。
+- 整列・分布・グリッドスナップ・整列ガイド線は `core/layout/align.ts` / `snap.ts` / `guides.ts` に純関数として実装し、UI から独立してユニットテスト可能にする(整列ガイド線は §5.3)。
+- **角丸矩形**は独立したツールを設けず、矩形(`RectShape.cornerRadius`)の属性として扱う。矩形を選択した状態で `PropertyPanel.tsx` に「角丸」の数値入力欄(0 以上、図形の短辺の半分を上限にクランプ)を表示し、`cornerRadius` を変更する。EMF 出力(§8.3)は `cornerRadius > 0` のとき GDI の `RoundRect` で描画する(現状は `Rectangle` で描画しており角丸が失われるため、あわせて修正する)。
 - コネクタの追従: 接続先図形の `x/y/width/height/rotation` の変更を購読し、`fromAnchor`/`toAnchor` の絶対座標を再計算して経路を再描画する。MVP では直線接続のみとし、直交ルーティング(カギ線)は将来対応とする。
 - グルーピングは `groupId` の付与のみで表現し、専用のグループ図形は作らない(選択・移動・スタイル変更をまとめて行う際に `groupId` でフィルタする)。
 
@@ -272,7 +282,56 @@ interface DocumentState {
   - `Ctrl+Tab` / `Ctrl+Shift+Tab`: 次/前のタブへ `switchTab()`(端のタブでは反対側の端へ循環する)
   - `Ctrl+W`(Mac `Cmd+W`): アクティブなタブを `closeTab()`(最後の1枚のときは何も起きない)
   - いずれもブラウザ本来のタブ操作ショートカットと同名にして、対象ユーザー(ブラウザのタブ操作に慣れたビジネスパーソン、要求仕様2章)の既存の習熟を再利用する狙い。
-- **タブを閉じる操作はUndo/Redo・確認ダイアログの対象外**とする(§4.1: 閉じたタブの履歴はその場で破棄され、Undoで復元できない)。プロジェクト全体の保存有無の確認(§9.2)は「別ファイルを開く/新規作成する」ときのみ働く仕組みであり、同じファイル内でのタブの追加・削除・並べ替え・名前変更にはこの確認は挟まない(要求仕様4.7も、確認を求めているのは「別のファイルを開いた場合」のみで、タブ操作自体は対象外)。誤って閉じたタブを保持したい場合は、閉じる前に保存しておくことをユーザーに委ねる(MVPでの割り切り)。
+- **タブを閉じる際の確認**(要求仕様 4.7): 閉じたタブは従来どおり Undo/Redo の対象外(履歴ごと破棄)とし、その代わりに中身のあるタブを閉じる前に確認する。
+  - ×ボタン(`TabBar.tsx`)と `Ctrl+W`(`App.tsx`)はどちらも `closeTab` を直接呼ばず、`tabCloseStore` の `requestCloseTab(id)` を呼ぶ。2つの経路で同じ判定・ダイアログを共有するため、確認待ちの状態は小さな Zustand ストアに置く(`App.tsx` と `TabBar.tsx` のどちらかのローカル state に置くと、もう一方から開けないため)。
+  ```ts
+  interface TabCloseState {
+    pendingTabId: string | null;      // 確認ダイアログ表示中の対象タブ。null ならダイアログは閉じている
+    requestCloseTab: (id: string) => void;
+    resolvePending: (choice: "close" | "cancel") => void;
+  }
+  ```
+  - `requestCloseTab(id)`: タブが1枚のみなら何もしない。対象タブの `document.shapes` が空(図形0個)なら確認なしで `closeTab(id)` を呼ぶ。図形が1つ以上あれば `pendingTabId = id` にしてダイアログを開く。判定は図形数のみで行い、構造化ブロックの有無は見ない(ブロックは図形を生成するため、図形0個のブロックだけが残っているタブは空とみなしてよい)。
+  - ダイアログは `TabBar.tsx` が `ConfirmDialog.tsx`(§2)で描画する。文言は「タブ「<タブ名>」を閉じますか？ タブの内容は元に戻せません。」、ボタンは「閉じる」「キャンセル」の2つ。`resolvePending("close")` で `closeTab(pendingTabId)` を呼び、どちらの場合も `pendingTabId` を `null` に戻す。閉じた後は従来どおり `resetActiveTabUiState()` を呼ぶ。
+  - ダイアログ表示中は `App.tsx` のグローバルショートカット(`Ctrl+W` の連打等)を無視する(`pendingTabId !== null` のとき `handleKeyDown` の先頭で return)。
+  - `closeTab` 自体は確認を行わない純粋な操作のまま残す(テストや今後の内部利用のため)。
+- プロジェクト全体の未保存確認(§9.2)は、同じファイル内でのタブの追加・削除・並べ替え・名前変更には挟まない。タブを閉じる確認は上記の2択のみで、保存を促すものではない(閉じた結果はファイル全体の `isDirty` に反映され、ファイルの切り替え・アプリ終了時に §9.2・§9.3 の確認対象となる)。
+
+### 5.3 整列ガイド線
+
+要求仕様 4.1「整列・分布、グリッドスナップ、ガイド線」の受け入れ条件(移動時に他の図形の端・中心と揃う位置にガイド線を表示する)に対応する。現状は `GuidesAndSnap.tsx` がグリッドの背景描画のみを行っており、図形同士の整列ガイド線は未実装のため、本節で追加する。
+
+- **対象操作**: 図形のドラッグ移動(`Canvas.tsx` の `handlePointerMove`、単一・複数選択とも)。リサイズ・回転中は対象外とする(MVPでの割り切り)。
+- **計算**(`guides.ts`、純関数):
+  ```ts
+  interface GuideLine { axis: "x" | "y"; position: number; from: number; to: number } // キャンバス座標
+  function computeAlignmentGuides(
+    moving: Box,                 // 移動中の図形群全体のバウンディングボックス(移動量適用後、スナップ前)
+    others: Box[],               // 移動対象以外の図形のバウンディングボックス(回転は考慮せず軸平行の外接矩形)
+    threshold: number,           // キャンバス座標での吸着距離
+  ): { dx: number; dy: number; snappedX: boolean; snappedY: boolean; lines: GuideLine[] };
+  ```
+  - x 軸は `moving` の左端・中心・右端の3点と、`others` 各図形の左端・中心・右端の3点の全組み合わせを比較し、差の絶対値が `threshold` 以下で最小のものを採用して `dx`(吸着のための補正量)を返す。y 軸も上端・中心・下端で同様に `dy` を求める。
+  - `lines` には、採用した位置で揃っているすべての図形を結ぶ線分(揃った軸上で、`moving` と該当図形の範囲を覆う長さ)を返す。
+- **グリッドスナップとの優先順位**: 軸ごとに、ガイドへの吸着が成立した軸はガイドを優先し、その軸のグリッドスナップは行わない。成立しなかった軸は従来どおり `snapValue` でグリッドに吸着する。
+- `threshold` は画面上で 6px 相当とし、`6 / viewport.scale` をキャンバス座標で渡す(ズーム率によらず操作感を一定にする)。
+- **対象図形**: 移動する側・比較される側のどちらからも、コネクタ/矢印は除外する(`x/y/width/height` が描画位置を表さないため)。
+- **描画**: `Canvas.tsx` のローカル state に `guideLines: GuideLine[]` を持ち、ドラッグ中のみ更新する。`GuidesAndSnap.tsx` の `AlignmentGuides` コンポーネントに渡し、ビューポート変換されたグループ内で図形より後(前面)に、画面上1pxの細い実線(選択色と同じ青、`pointerEvents="none"`)で描画する。ポインタを離した時点(`handlePointerUp`)で空にする。ガイド線は表示専用で、ドキュメントにも履歴にも含めない。
+- 図形数は数十〜百の規模(要求仕様5章)のため、毎フレーム全図形と比較する単純な実装でよい(空間インデックスは導入しない)。
+
+### 5.4 要求仕様 4.1 の受け入れ条件との対応
+
+| 要求仕様 4.1 の機能 | 対応する設計 |
+|---|---|
+| 基本図形の作成・移動・リサイズ・回転 | §5(react-moveable)、§5.1(ツール7件)。角丸矩形は矩形の属性(§5) |
+| ツール切り替えUI | §5.1 |
+| 図形同士の接続 | §5(コネクタの追従) |
+| 整列・分布、グリッドスナップ、ガイド線 | §5(`align.ts`/`snap.ts`)、§5.3(整列ガイド線) |
+| グルーピング/グループ解除 | §5(`groupId`) |
+| レイヤー順序 | `documentStore` の `applyZOrder` |
+| 複製、コピー&ペースト(タブをまたぐ場合を含む) | §4.1(複製規則) |
+| Undo/Redo | §4、§4.1(タブごとの履歴) |
+| ズーム、パン | `Canvas.tsx` のビューポート(図形の座標は変えない) |
 
 ## 6. 構造化テンプレート生成
 
@@ -568,6 +627,8 @@ Markdown の箇条書きに近い、インデント+ハイフンのアウトラ�
 
 ## 8. 出力・エクスポート
 
+エクスポート(SVG・PNG・EMFファイル・EMFクリップボード)の対象は、要求仕様 4.5 のとおり**アクティブなタブの図のみ**とする。`Toolbar.tsx` の各エクスポート処理は `documentStore` の `document`(アクティブタブの `Document` を指す導出値、§4.1)から SVG 文字列・図形配列を組み立てる。複数タブの一括エクスポートは行わない。
+
 ### 8.1 SVG エクスポート
 
 - フロントエンドで `Document` から SVG 文字列を組み立て(キャンバス描画と同じロジックを再利用)、Tauri の `project.rs` 経由でファイル書き込みのみバックエンドに委譲する。
@@ -623,6 +684,30 @@ async function withUnsavedChangesGuard(action: () => Promise<void> | void): Prom
 - **未保存の変更がない場合**(`isDirty === false`): ダイアログを出さず即座に `action()` を実行する(要求仕様4.7の確定事項どおり)。
 - `isDirty` の更新規則は §4.1 のとおり。「保存する」実行後、および `loadProject()`/`newProject()` 実行後は `isDirty` が `false` に戻るため、確認は常に「直前の保存以降に何か変更したか」を正しく反映する。
 
+### 9.3 アプリ終了時の未保存確認
+
+要求仕様 4.7 の「アプリケーションを終了しようとした場合」に対応する。ウィンドウの閉じるボタン・`Alt+F4` 等によるウィンドウの閉じる要求を捕まえ、§9.2 と同じガードを通す。
+
+- **仕組み**: Tauri v2 の `getCurrentWindow().onCloseRequested(handler)`(`@tauri-apps/api/window`)を `Toolbar.tsx` の `useEffect` で1回だけ登録する(ガード関数・保存処理・確認ダイアログがすべて `Toolbar.tsx` にあるため、同じ場所に置く)。
+  ```ts
+  // Toolbar.tsx 内。guardRef は毎レンダーで最新の withUnsavedChangesGuard を指す。
+  useEffect(() => {
+    const appWindow = getCurrentWindow();
+    const unlisten = appWindow.onCloseRequested(async (event) => {
+      if (!useDocumentStore.getState().isDirty) return; // 何もしなければそのまま閉じる
+      event.preventDefault();
+      await guardRef.current(() => appWindow.destroy());
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, []);
+  ```
+  - 未保存の変更がなければ `preventDefault()` を呼ばず、Tauri の既定動作でそのまま閉じる。
+  - 未保存の変更があれば閉じる処理を止めて3択ダイアログを表示し、「保存する」(保存が完了した場合)・「保存しない」のときに `destroy()` で閉じる。「キャンセル」、または保存が完了しなかった場合(§9.2 と同じ判定)は何もせず編集を続ける。
+  - リスナーは1回だけ登録するため、ハンドラ内から呼ぶガード関数は `useRef` 経由で最新のものを参照する(`handleSave` が `currentFilePath` をレンダー時のクロージャで保持しているため、登録時のガード関数を直接使うと古いパスに保存してしまう)。
+- **権限**: `destroy()` の呼び出しには Tauri v2 の権限 `core:window:allow-destroy` が必要なため、`src-tauri/capabilities/default.json` の `permissions` に追加する(`core:default` には含まれない)。
+- ダイアログ表示中に再度閉じる要求が来た場合は、2つ目のダイアログを開かずに無視する(確認待ちの間はハンドラ内で `preventDefault()` だけ行って return する)。
+- Rust 側の変更は不要(閉じる要求の捕捉と確認はすべてフロントエンドで完結する)。
+
 ## 10. Tauri コマンド(IPC)一覧
 
 | コマンド | 引数 | 戻り値 | 説明 |
@@ -639,6 +724,8 @@ async function withUnsavedChangesGuard(action: () => Promise<void> | void): Prom
 | `get_user_templates` | - | `UserTemplate[]` | ユーザーテンプレート一覧 |
 | `save_user_template` | `name, shapes` | `UserTemplate` | 選択図形群をテンプレートとして登録 |
 | `delete_user_template` | `id` | `void` | ユーザーテンプレートを削除 |
+
+アプリ終了時の未保存確認(§9.3)は Tauri 標準のウィンドウ API で実現するため、独自コマンドは追加しない。
 
 すべて `Result<T, AppError>` を返し、`AppError` は `{ kind: string, message: string }` にシリアライズしてフロントエンドへ渡す(11章参照)。
 
@@ -665,8 +752,11 @@ async function withUnsavedChangesGuard(action: () => Promise<void> | void): Prom
   - Undo/Redo: 複数操作→Undo連打→Redo連打で状態(スナップショット)が一致することを検証する。
   - ユーザーテンプレート: 複数図形選択→登録→座標正規化→別位置への配置で絶対座標へ正しく変換されることを検証する。
   - 複数タブ(§4.1, §9.2): タブ追加→切り替え→別タブで編集→元のタブに戻ると編集前の内容のままであることを検証する。タブごとのUndo/Redoが独立していること(タブAで操作→タブBに切り替えてUndoしてもタブAの内容は変化しない)。`closeTab` が最後の1枚では何もしないこと。`isDirty` が変更操作で`true`になり`markSaved`/`newProject`/`loadProject`で`false`に戻ること。`projectFile.ts` の旧形式(`tabs`フィールドなしの`Document`)読み込みが単一タブの`ProjectFile`に変換されることの往復テスト。
-- バックエンド: `cargo test` で `project_file.rs` のシリアライズ/デシリアライズの往復一致、`shape_draw.rs` の Shape→GDI描画命令列への変換ロジック(GDI 呼び出し自体から分離した部分)を検証する。実際の GDI 呼び出し・クリップボード転送は Windows 実行環境に依存するため自動テスト対象外とし、後述の手動動作確認で担保する。
-- E2E テストは MVP の対象外とする(手動動作確認で代替。将来的に Tauri 向け E2E ツールの導入を検討)。
+  - タブを閉じる確認(§5.2): `requestCloseTab` が、図形0個のタブでは確認なしに閉じ、図形を含むタブでは `pendingTabId` を設定するだけでタブを閉じないこと。`resolvePending("close")` で閉じ、`"cancel"` でタブが残ること。タブが1枚のときは何もしないこと。
+  - 複製規則(§4.1): 構造化テンプレート由来の図形を別タブへ貼り付けると `templateNodeIds` を持たない図形になり、貼り付け先のブロックに影響しないこと。同時にコピーした図形同士をつなぐコネクタは新しい ID に付け替わること。コピーしなかった図形につながるコネクタは、コピー時点の端点座標を持つ自由端点になること。
+  - 整列ガイド線(§5.3): `computeAlignmentGuides` が、しきい値内の左端・中心・右端(上端・中心・下端)の一致を検出して補正量とガイド線を返すこと、しきい値を超える場合は補正しないこと、複数候補がある場合は最も近いものを選ぶこと。
+- バックエンド: `cargo test` で `project_file.rs` のシリアライズ/デシリアライズの往復一致、`shape_draw.rs` の Shape→GDI描画命令列への変換ロジック(GDI 呼び出し自体から分離した部分)を検証する。`cornerRadius > 0` の矩形が `RoundRect` の描画命令に変換されることも検証する。実際の GDI 呼び出し・クリップボード転送は Windows 実行環境に依存するため自動テスト対象外とし、後述の手動動作確認で担保する。
+- E2E テストは MVP の対象外とする(手動動作確認で代替。将来的に Tauri 向け E2E ツールの導入を検討)。アプリ終了時の未保存確認(§9.3)はウィンドウ API に依存するため、手動動作確認で担保する。
 
 ## 14. パッケージング方針
 

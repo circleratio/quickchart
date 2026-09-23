@@ -184,3 +184,111 @@
   6. タブが1枚だけの状態で×ボタン・`Ctrl+W` を試し、タブが閉じられない(無視される)ことを確認する。
   7. 本機能導入前の形式(単一 `Document` 直下、`tabs` フィールドなし)の `.qct` ファイルを用意して開き、単一タブとして正しく復元されることを確認する。
 - **最終確認**: `npm test`(Vitest)・`cargo test` が全件成功すること。`doc/requirement.md` §4.7 の各箇条を上記手順ですべて突き合わせたことを確認する。
+
+## フェーズ15〜20: 要求仕様レビュー指摘への対応
+
+要求仕様のレビューで追加・明確化した要求に対応する(要求仕様 4.1・4.5・4.7、spec §4.1, §5, §5.2〜5.4, §8, §9.3)。エクスポート対象を「アクティブなタブのみ」とする要求(要求仕様 4.5、spec §8)は実装済みのため、このフェーズ群では扱わず、フェーズ20の手動動作確認で突き合わせるのみとする。
+
+**依存関係**: フェーズ15〜19は互いに独立しており、どの順で進めても並行して進めてもよい。ただし次の2点に注意する。
+- フェーズ16(`App.tsx`/`TabBar.tsx`)とフェーズ17(`Toolbar.tsx`/capabilities)は触るファイルが重ならないが、どちらも確認ダイアログ(`ConfirmDialog.tsx`)を使うため、`ConfirmDialog.tsx` 自体に変更が必要になった場合は先に済ませた方に合わせる。
+- フェーズ20(手動動作確認・最終確認)はフェーズ15〜19がすべて終わってから行う。
+
+## フェーズ15: 複製・貼り付け時の図形の複製規則(タブをまたぐコピー&ペースト)
+
+**対象**: `core/model/shapeClone.ts`(新規), `core/store/documentStore.ts`
+
+spec §4.1「複製・貼り付け時の図形の複製規則」に対応する。`clipboard` はすでにタブ非依存のため、タブをまたいだ貼り付け自体は動くが、元の図形への参照(`templateNodeIds`、コネクタの接続先)を持ち越してしまう問題を直す。
+
+- `shapeClone.ts` に次の純関数を実装する。
+  - `detachExternalConnections(shapes: Shape[], sourceShapes: Record<ShapeId, Shape>): Shape[]`: `shapes` 内のコネクタ/矢印について、接続先が `shapes` に含まれない端点を外し、`resolveEndpoint`(`ConnectorRenderer.tsx`)で求めた現在の絶対座標を `points` に書き込む。接続先が `shapes` に含まれる端点はそのまま残す。
+  - `cloneShapesInto` を `documentStore.ts` から `shapeClone.ts` へ移し、2パス処理に書き換える(1パス目で旧ID→新IDの対応表を作り、2パス目で複製)。複製時に `templateNodeIds` を `undefined` にし、コネクタの `fromShapeId`/`toShapeId` を対応表で新IDに付け替える。`groupId` の付け替え・(+20, +20)のずらし・`zIndex` の採番は現状を踏襲する。
+- `resolveEndpoint` は `ConnectorRenderer.tsx`(コンポーネントのファイル)にあるため、`core/` から参照できるよう既存の `core/layout/connector.ts`(`anchorPosition` と同じ場所)へ移し、`ConnectorRenderer.tsx`・`Canvas.tsx`・`svgExport.ts` はそれを import する形にする。
+- `documentStore.ts`:
+  - `copyShapes`: 選択図形を `detachExternalConnections(選択図形, state.document.shapes)` で正規化してから `clipboard` に保持する。
+  - `duplicateShapes`: 複製の直前に同じ関数を通す。
+  - `pasteClipboard`: 移動後の `cloneShapesInto` を使う(呼び出し方は変えない)。
+- `clipboard` を `newProject`/`loadProject` でのみ空にし、`switchTab`/`addTab`/`closeTab` では保持していることを確認する(現状どおりのはずだが、テストで固定する)。
+
+**完了基準**: 以下をユニットテストで検証できる(spec §13)。
+- 構造化テンプレート由来の図形をコピーして別タブに貼り付けると、`templateNodeIds` を持たない図形になり、貼り付け先・貼り付け元どちらのブロックの `generatedShapeIds` も変化しない。同じタブ内の複製・貼り付けでも同様。
+- 図形A・Bとそれをつなぐコネクタをまとめてコピー&ペーストすると、貼り付けたコネクタは貼り付けたA'・B'につながっている。
+- 図形Aとコネクタのみをコピー(接続先Bはコピーしない)して貼り付けると、B側の端点はコピー時点のBのアンカー位置(+20, +20)を持つ自由端点になる。
+- `switchTab` をはさんでも `clipboard` が保持され、別タブに貼り付けられる。
+
+## フェーズ16: タブを閉じる際の確認
+
+**対象**: `core/store/tabCloseStore.ts`(新規), `components/tabs/TabBar.tsx`, `App.tsx`
+
+spec §5.2「タブを閉じる際の確認」に対応する。
+
+- `tabCloseStore.ts`: `pendingTabId`/`requestCloseTab(id)`/`resolvePending(choice)` を持つ Zustand ストアを実装する。`requestCloseTab` は、タブが1枚なら何もしない、対象タブの図形が0個なら `useDocumentStore.getState().closeTab(id)` を直接呼ぶ、1個以上なら `pendingTabId` を設定する。
+- `TabBar.tsx`: ×ボタンの `handleClose` を `requestCloseTab(id)` 呼び出しに置き換える。`pendingTabId !== null` のとき `ConfirmDialog` を表示する(文言「タブ「<タブ名>」を閉じますか？ タブの内容は元に戻せません。」、ボタン「閉じる」「キャンセル」)。「閉じる」で `resolvePending("close")` の後に `resetActiveTabUiState()` を呼ぶ。確認なしで閉じた場合も `resetActiveTabUiState()` を呼ぶ。
+- `App.tsx`: `Ctrl+W` の処理を `store.closeTab(...)` から `requestCloseTab(store.activeTabId)` に置き換える。`handleKeyDown` の先頭で、`pendingTabId !== null` のときはすべてのショートカットを無視する。
+- `closeTab` 自体は変更しない。
+
+**完了基準**:
+- ユニットテスト(spec §13): 図形0個のタブは確認なしに閉じる。図形を含むタブは `pendingTabId` が設定されるだけでタブが残る。`resolvePending("close")` で閉じ、`"cancel"` で残る。タブが1枚のときは何もしない。
+- `npm run tauri dev` で、図形を含むタブの×ボタン・`Ctrl+W` の両方で確認ダイアログが出て、空のタブは確認なしに閉じることを確認する。
+
+## フェーズ17: アプリ終了時の未保存確認
+
+**対象**: `components/toolbar/Toolbar.tsx`, `src-tauri/capabilities/default.json`
+
+spec §9.3 に対応する。
+
+- `src-tauri/capabilities/default.json` の `permissions` に `core:window:allow-destroy` を追加する。
+- `Toolbar.tsx`:
+  - 最新の `withUnsavedChangesGuard` を指す `guardRef`(`useRef`)を用意し、毎レンダーで更新する。
+  - `useEffect` で `getCurrentWindow().onCloseRequested` を1回だけ登録する。`isDirty` が `false` なら何もしない(そのまま閉じる)。`true` なら `event.preventDefault()` の後に `guardRef.current(() => appWindow.destroy())` を呼ぶ。アンマウント時にリスナーを解除する。
+  - 確認ダイアログ表示中(`confirmResolve !== null`)に再度閉じる要求が来た場合は、`preventDefault()` だけ行って return する。
+- `npm run dev`(Vite単体、Tauri外)で起動した場合に `getCurrentWindow()` が例外を投げてもアプリ全体が止まらないよう、登録処理を try/catch で囲む(README記載のとおり、Vite単体起動ではRust連携機能は動作しない前提)。
+
+**完了基準**: 手動で確認する(ウィンドウAPIに依存するため自動テストの対象外、spec §13)。`npm run tauri dev` で起動し、下記フェーズ20の手順4を満たす。`npx tsc --noEmit` が通る。
+
+## フェーズ18: 整列ガイド線
+
+**対象**: `core/layout/guides.ts`(新規), `components/canvas/Canvas.tsx`, `components/canvas/GuidesAndSnap.tsx`
+
+spec §5.3 に対応する。
+
+- `guides.ts`: `computeAlignmentGuides(moving, others, threshold)` を純関数として実装する(x軸は左端・中心・右端、y軸は上端・中心・下端の全組み合わせから、しきい値以内で最も近いものを採用し、補正量とガイド線を返す)。
+- `Canvas.tsx` の `handlePointerMove`(図形のドラッグ移動):
+  - 移動対象の図形群全体のバウンディングボックス(移動量を足した後)と、移動対象以外の図形のバウンディングボックス一覧を求め、`computeAlignmentGuides(..., 6 / viewport.scale)` を呼ぶ。
+  - ガイドに吸着した軸は補正量を全移動対象に足し、その軸のグリッドスナップ(`snapValue`)は行わない。吸着しなかった軸は従来どおりグリッドに吸着する。
+  - 結果のガイド線をローカル state `guideLines` に保持し、`handlePointerUp` で空にする。
+- `GuidesAndSnap.tsx`: `guideLines` を props で受け取り、図形より前面に細い実線(`SELECTION_COLOR`、`pointerEvents="none"`)で描画する。グリッドの背景描画と前面のガイド線描画で描画位置(図形グループの前か後か)が異なるため、必要ならガイド線描画を別コンポーネントに分けて `Canvas.tsx` の図形グループの後に置く。
+
+**完了基準**:
+- ユニットテスト(spec §13): しきい値以内の端・中心の一致を検出して補正量とガイド線を返す。しきい値を超える場合は補正しない。複数候補があるときは最も近いものを選ぶ。
+- `npm run tauri dev` で、図形をドラッグして別の図形の左端・中心・右端(上端・中心・下端)に近づけると吸着してガイド線が表示され、離すとガイド線が消えることを確認する。
+
+## フェーズ19: 角丸矩形の設定UI・EMF出力
+
+**対象**: `components/panels/PropertyPanel.tsx`, `src-tauri/src/emf/shape_draw.rs`, `src-tauri/src/emf/writer.rs`
+
+spec §5(角丸矩形)・§8.3 に対応する。
+
+- `PropertyPanel.tsx`: 矩形(`type: "rect"`)を単一選択しているときに「角丸」の数値入力欄を表示し、`cornerRadius` を更新する(0以上、`min(width, height) / 2` を上限にクランプ)。更新は既存のスタイル・位置変更と同じく Undo/Redo の対象にする。
+- `shape_draw.rs`: 矩形の `BoxCommand`(またはその Rect 用の変種)に `corner_radius`(フロントエンドの `cornerRadius`、未指定は0)を持たせる。
+- `writer.rs`: `corner_radius > 0` のとき `Rectangle` の代わりに `RoundRect(hdc, left, top, right, bottom, 2r, 2r)` を呼ぶ(`RoundRect` の最後の2引数は角の楕円の幅・高さのため、半径の2倍を渡す)。回転(`with_rotation`)の扱いは矩形と同じ。
+
+**完了基準**:
+- `cargo test`: `cornerRadius > 0` の矩形が角丸付きの描画命令に変換され、`cornerRadius` 未指定・0の矩形は従来どおりの矩形になる(spec §13)。
+- `npm run tauri dev` で矩形に角丸を設定し、キャンバス・SVGエクスポート・EMFエクスポート(ファイルをPowerPointに挿入)のいずれでも角が丸く表示されることを確認する。角丸を持つテンプレート(例: ビフォーアフター(縦))をEMFでPowerPointに貼り付けた場合も角丸が保たれることを確認する。
+
+## フェーズ20: 手動動作確認・最終確認(要求仕様レビュー指摘への対応)
+
+フェーズ15〜19の内容を、`doc/requirement.md` §4.1・§4.5・§4.7 の記述と実際に突き合わせる。`npm run tauri dev` で起動し、以下を手順どおりに確認する。
+
+1. **タブをまたぐコピー&ペースト**(要求仕様 4.1・4.7): タブ1にツリー図を生成し、ノード図形2つとその間の接続線、および自由配置の矩形2つとそれらをつなぐコネクタを選択して `Ctrl+C`。「+」でタブ2を追加して `Ctrl+V`。貼り付けた図形が表示され、矩形間のコネクタは貼り付けた矩形同士につながっていること(貼り付けた矩形を動かすとコネクタが追従する)。貼り付けたツリーのノード図形のラベルを編集しても、タブ1の階層テキストが変わらないこと。タブ1に戻り、元のツリー図と階層テキストが変化していないこと。
+2. **タブを閉じる際の確認**(要求仕様 4.7): 図形を含むタブで×ボタンを押すと「閉じる」「キャンセル」の確認が出ること。「キャンセル」でタブが残り、「閉じる」でタブが閉じること。同じ確認が `Ctrl+W` でも出ること。空のタブは×ボタン・`Ctrl+W` のどちらでも確認なしに閉じること。タブが1枚のときは従来どおり閉じられないこと。
+3. **エクスポート対象**(要求仕様 4.5): 2つのタブに異なる図を置き、タブ2をアクティブにしてSVG・PNG・EMFファイルをエクスポートし、いずれもタブ2の図のみが書き出されていること。EMFクリップボードからPowerPointへの貼り付けも同様に確認する。
+4. **アプリ終了時の未保存確認**(要求仕様 4.7):
+   - 未保存の変更がない状態でウィンドウの閉じるボタンを押すと、確認なしに終了すること。
+   - 図形を追加した(未保存の)状態で閉じるボタンを押すと3択の確認が出ること。「キャンセル」で編集を続けられること。「保存しない」で終了すること。
+   - もう一度起動し、未保存の状態で閉じる→「保存する」を選ぶ。未保存の新規ファイルの場合は保存ダイアログが出て、保存すると終了すること。保存ダイアログでキャンセルすると終了せず編集を続けられること。
+   - `Alt+F4` でも同じ確認が出ること。
+5. **整列ガイド線・角丸矩形**(要求仕様 4.1): フェーズ18・19の完了基準の手動確認を実施する。
+6. **4.1 受け入れ条件の一巡**: `doc/requirement.md` §4.1 の表の各行(図形の作成・変形、ツール切り替えUI、接続、整列・分布・スナップ・ガイド線、グルーピング、レイヤー順序、複製・コピー&ペースト、Undo/Redo、ズーム・パン)を1行ずつ操作して、受け入れ条件を満たすことを確認する。
+
+- **最終確認**: `npm run test`(Vitest)・`npx tsc --noEmit`・`cargo test`(`src-tauri` で実行)がすべて成功すること。`doc/requirement.md` §4.1・§4.5・§4.7 の各箇条を上記手順ですべて突き合わせたことを確認する。
