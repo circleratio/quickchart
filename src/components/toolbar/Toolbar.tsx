@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useDocumentStore } from "../../core/store/documentStore";
 import { useSelectionStore } from "../../core/store/selectionStore";
+import { useStructuredEditorStore } from "../../core/store/structuredEditorStore";
+import { ConfirmDialog } from "../common/ConfirmDialog";
 import {
   errorMessageFor,
   exportEmfToClipboard,
@@ -17,6 +19,13 @@ import { buildSvgDocument } from "../../core/io/svgExport";
 
 const PNG_EXPORT_SCALE = 2;
 
+type UnsavedChangesChoice = "save" | "discard" | "cancel";
+
+function resetActiveTabUiState() {
+  useSelectionStore.getState().clear();
+  useStructuredEditorStore.getState().setActiveBlockId(null);
+}
+
 export function Toolbar() {
   const canUndo = useDocumentStore((s) => s.canUndo);
   const canRedo = useDocumentStore((s) => s.canRedo);
@@ -25,63 +34,102 @@ export function Toolbar() {
   const document = useDocumentStore((s) => s.document);
   const currentFilePath = useDocumentStore((s) => s.currentFilePath);
   const setCurrentFilePath = useDocumentStore((s) => s.setCurrentFilePath);
-  const newDocument = useDocumentStore((s) => s.newDocument);
-  const loadDocument = useDocumentStore((s) => s.loadDocument);
+  const newProject = useDocumentStore((s) => s.newProject);
+  const loadProject = useDocumentStore((s) => s.loadProject);
+  const buildProjectFile = useDocumentStore((s) => s.buildProjectFile);
+  const markSaved = useDocumentStore((s) => s.markSaved);
 
   const [toast, setToast] = useState<string | null>(null);
   const [recentFiles, setRecentFiles] = useState<string[]>([]);
   const [showRecent, setShowRecent] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Holds the pending Promise's resolver while the unsaved-changes dialog
+  // (doc/spec.md §9.2) is open; null means the dialog is closed.
+  const [confirmResolve, setConfirmResolve] = useState<((choice: UnsavedChangesChoice) => void) | null>(null);
 
   function showError(err: unknown) {
     const message = errorMessageFor(err);
     if (message) setToast(message);
   }
 
-  function handleNew() {
-    newDocument();
-    useSelectionStore.getState().clear();
+  function confirmUnsavedChanges(): Promise<UnsavedChangesChoice> {
+    return new Promise((resolve) => setConfirmResolve(() => resolve));
+  }
+
+  // Guards New/Open/Open-recent (doc/spec.md §9.2, doc/requirement.md §4.7):
+  // asks to save/discard/cancel when there are unsaved changes, then runs
+  // `action` (the actual switch) unless the user cancelled.
+  async function withUnsavedChangesGuard(action: () => Promise<void> | void): Promise<void> {
+    if (!useDocumentStore.getState().isDirty) {
+      await action();
+      return;
+    }
+    const choice = await confirmUnsavedChanges();
+    if (choice === "cancel") return;
+    if (choice === "save") {
+      const saved = await handleSave();
+      if (!saved) return;
+    }
+    await action();
+  }
+
+  async function handleNew() {
+    await withUnsavedChangesGuard(() => {
+      newProject();
+      resetActiveTabUiState();
+    });
   }
 
   async function handleOpen() {
-    setBusy(true);
-    try {
-      const result = await projectOpen();
-      loadDocument(result.document, result.path);
-      useSelectionStore.getState().clear();
-    } catch (err) {
-      showError(err);
-    } finally {
-      setBusy(false);
-    }
+    await withUnsavedChangesGuard(async () => {
+      setBusy(true);
+      try {
+        const result = await projectOpen();
+        loadProject(result.projectFile, result.path);
+        resetActiveTabUiState();
+      } catch (err) {
+        showError(err);
+      } finally {
+        setBusy(false);
+      }
+    });
   }
 
   async function handleOpenRecent(path: string) {
     setShowRecent(false);
-    setBusy(true);
-    try {
-      const result = await projectOpenPath(path);
-      loadDocument(result.document, result.path);
-      useSelectionStore.getState().clear();
-    } catch (err) {
-      showError(err);
-    } finally {
-      setBusy(false);
-    }
+    await withUnsavedChangesGuard(async () => {
+      setBusy(true);
+      try {
+        const result = await projectOpenPath(path);
+        loadProject(result.projectFile, result.path);
+        resetActiveTabUiState();
+      } catch (err) {
+        showError(err);
+      } finally {
+        setBusy(false);
+      }
+    });
   }
 
-  async function handleSave() {
+  // Returns whether the save actually completed (used by the unsaved-changes
+  // guard above to decide whether it's safe to proceed with the switch - a
+  // cancelled native save dialog surfaces as a `dialog_cancelled` error here,
+  // same as errorMessageFor() already treats it as "not worth a toast").
+  async function handleSave(): Promise<boolean> {
     setBusy(true);
     try {
       if (currentFilePath) {
-        await projectSave(currentFilePath, document);
+        await projectSave(currentFilePath, buildProjectFile());
       } else {
-        const result = await projectSaveAs(document);
+        const result = await projectSaveAs(buildProjectFile());
         setCurrentFilePath(result.path);
       }
+      markSaved();
+      return true;
     } catch (err) {
       showError(err);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -90,8 +138,9 @@ export function Toolbar() {
   async function handleSaveAs() {
     setBusy(true);
     try {
-      const result = await projectSaveAs(document);
+      const result = await projectSaveAs(buildProjectFile());
       setCurrentFilePath(result.path);
+      markSaved();
     } catch (err) {
       showError(err);
     } finally {
@@ -238,6 +287,19 @@ export function Toolbar() {
           {toast}
         </div>
       )}
+      <ConfirmDialog
+        open={confirmResolve !== null}
+        message="現在のファイルに未保存の変更があります。保存しますか？"
+        buttons={[
+          { label: "保存する", value: "save" },
+          { label: "保存しない", value: "discard" },
+          { label: "キャンセル", value: "cancel" },
+        ]}
+        onSelect={(value) => {
+          confirmResolve?.(value as UnsavedChangesChoice);
+          setConfirmResolve(null);
+        }}
+      />
     </div>
   );
 }

@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Document } from "../model/document";
+import type { ProjectFile } from "../model/project";
 import type { Shape } from "../model/shape";
 import type { UserTemplate } from "../model/userTemplate";
-import { deserializeDocument, serializeDocument } from "./projectFile";
+import { deserializeProjectFile, serializeProjectFile } from "./projectFile";
 
 // Mirrors src-tauri/src/error.rs's AppError serialization (see doc/spec.md
 // §11): { kind, message }. `message` is for logs only - user-facing text
@@ -56,11 +56,11 @@ export function errorMessageFor(err: unknown): string | null {
 
 export interface OpenResult {
   path: string;
-  document: Document;
+  projectFile: ProjectFile;
 }
 
 async function toOpenResult(raw: { path: string; document: unknown }): Promise<OpenResult> {
-  return { path: raw.path, document: deserializeDocument(raw.document) };
+  return { path: raw.path, projectFile: deserializeProjectFile(raw.document) };
 }
 
 export async function projectOpen(): Promise<OpenResult> {
@@ -71,12 +71,12 @@ export async function projectOpenPath(path: string): Promise<OpenResult> {
   return toOpenResult(await call("project_open_path", { path }));
 }
 
-export function projectSave(path: string, document: Document): Promise<void> {
-  return call<void>("project_save", { path, document: serializeDocument(document) });
+export function projectSave(path: string, projectFile: ProjectFile): Promise<void> {
+  return call<void>("project_save", { path, document: serializeProjectFile(projectFile) });
 }
 
-export function projectSaveAs(document: Document): Promise<{ path: string }> {
-  return call<{ path: string }>("project_save_as", { document: serializeDocument(document) });
+export function projectSaveAs(projectFile: ProjectFile): Promise<{ path: string }> {
+  return call<{ path: string }>("project_save_as", { document: serializeProjectFile(projectFile) });
 }
 
 export function getRecentFiles(): Promise<string[]> {

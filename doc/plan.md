@@ -134,3 +134,53 @@
 - `README.md` 作成(要求仕様のREADME作成タスクに対応)。
 
 **完了基準**: MVPスコープ(要求仕様3.1〜3.2)を満たし、`doc/README.md` から一通りの使い方を辿れる状態。
+
+## フェーズ12: 複数タブ対応データモデル・状態管理
+
+**対象**: `core/model/document.ts`, `core/model/project.ts`(新規), `core/io/projectFile.ts`, `core/io/tauriApi.ts`, `core/store/documentStore.ts`, `core/store/selectionStore.ts`, `core/store/structuredEditorStore.ts`
+
+要求仕様4.7・spec §3.2〜3.3, §4.1 に対応する。このフェーズではまだタブ操作のUIは作らず、データモデルとストアの土台のみを固める(フェーズ13で配線する)。`historyMiddleware.ts`(`DocumentHistory<T>`)自体はジェネリックなクラスのため変更不要。
+
+- `Document` から `formatVersion` を削除し、`core/model/project.ts` に `DocumentTab`/`ProjectFile` 型と `createEmptyProjectFile()` を新設する(spec §3.2, §3.3)。
+- `core/io/projectFile.ts`: `serializeProjectFile`/`deserializeProjectFile` を実装する。`deserializeProjectFile` は `tabs` フィールドの有無で旧形式(単一 `Document`、`formatVersion: 1`)を判定し、既存の `migrateDocument` を通した上で単一タブの `ProjectFile`(`formatVersion: 2`)に変換する(spec §3.3)。
+- `core/io/tauriApi.ts`: `OpenResult` の `document` フィールドを `projectFile: ProjectFile` にリネームし、`projectSave`/`projectSaveAs` が `ProjectFile` を受け取るようにする(IPCの引数名・JSONキー自体は `document` のまま変更しない。Rust側は無変更、spec §10注記)。
+- `core/store/documentStore.ts` を `tabs: DocumentTabState[]` + `activeTabId` 構成に書き換える(spec §4.1)。
+  - `change()` ヘルパーがアクティブタブの `id` で `Map<tabId, DocumentHistory<Document>>` を引いて、そのタブの `document` にのみ recipe を適用するようにする。
+  - `document`/`canUndo`/`canRedo` はアクティブタブから導出される値として維持し、既存の図形/構造化テンプレート操作アクション(`addShape` 等)のシグネチャは一切変更しない。
+  - `newProject`/`loadProject`/`buildProjectFile`/`markSaved`/`isDirty`、および `addTab`/`closeTab`/`switchTab`/`renameTab`/`reorderTabs` を実装する。
+- `switchTab`/`newProject`/`loadProject` の呼び出し側で `selectionStore`/`structuredEditorStore` をクリアする配線は、呼び出し元(Toolbar/TabBar)を実装するフェーズ13側で行う(このフェーズでは各ストアの `clear()`/`setActiveBlockId(null)` 自体は変更不要)。
+
+**完了基準**: 以下をユニットテストで検証できる(spec §13)。
+- タブを追加→切り替え→別タブで編集→元のタブに戻ると編集前の内容のままである。
+- タブごとのUndo/Redoが独立している(タブAで操作→タブBに切り替えてUndoしてもタブAの内容は変化しない)。
+- `closeTab` はタブが1枚のときは何もしない。
+- `isDirty` が変更操作(`change()`/`commitGesture()`/タブ操作)で `true` になり、`markSaved`/`newProject`/`loadProject` で `false` に戻る。
+- 旧形式(`tabs` フィールドなしの `Document`)ファイルの読み込みが単一タブの `ProjectFile` に変換される(往復テスト)。
+この時点では `App.tsx` 等の既存コンポーネントはコンパイルが通る最小限の追従(`document` セレクタ等の呼び出し方は変えない)にとどめ、タブのUI配線はまだ行わない。
+
+## フェーズ13: タブバーUI・保存/オープンの未保存確認フロー
+
+**対象**: `components/tabs/TabBar.tsx`(新規), `components/common/ConfirmDialog.tsx`(新規), `components/toolbar/Toolbar.tsx`, `App.tsx`, `styles/theme.css`
+
+フェーズ12で用意した状態管理をUIに配線する(spec §5.2, §9.2)。フェーズ12が完了していること(`documentStore` のタブAPIが揃っていること)が前提。
+
+- `ConfirmDialog.tsx`: タイトル・メッセージ・ボタン定義(ラベル+戻り値)を受け取る汎用の確認モーダルを実装する。
+- `TabBar.tsx`: `tabs` の一覧表示・クリックでの切り替え・×ボタンでの削除(1枚のみのときは非活性)・ダブルクリックでのインライン名前変更・HTML5 Drag and Drop APIでの並べ替え・「+」ボタンでの追加を実装し、`App.tsx` の `Toolbar` と `Canvas` の間に配置する(spec §5.2)。
+- `App.tsx`: 既存のグローバル `handleKeyDown` に `Ctrl+T`(タブ追加)・`Ctrl+Tab`/`Ctrl+Shift+Tab`(次/前のタブへ切り替え、循環)・`Ctrl+W`(アクティブタブを閉じる)を追加する。`TabBar.tsx` からのタブ切り替え(クリック・ショートカットいずれも)で `useSelectionStore.getState().clear()` と `useStructuredEditorStore.getState().setActiveBlockId(null)` を呼ぶ(spec §4.1)。
+- `Toolbar.tsx`: `handleSave` を「保存できたか」を `boolean` で返すように変更する(ネイティブ保存ダイアログのキャンセル = `dialog_cancelled` エラーは `false` として扱う)。`withUnsavedChangesGuard` を実装し、`handleNew`/`handleOpen`/`handleOpenRecent` の3操作に適用する(spec §9.2)。`handleSave`/`handleSaveAs` は `buildProjectFile()`/`markSaved()` を使うよう更新する。`loadProject()` 呼び出し時にも selectionStore/structuredEditorStore のクリアを行う。
+
+**完了基準**: タブの追加・切替・削除・名前変更・並べ替えがUIから一通り操作できる。未保存の変更がある状態で「新規作成」「開く」「直近使用ファイル」のいずれかを行うと3択(保存する/保存しない/キャンセル)の確認が表示され、選択どおりに動作する。未保存の変更がなければ確認なしに即座に切り替わる。
+
+## フェーズ14: 手動動作確認・最終確認(複数タブ編集機能)
+
+フェーズ12・13の内容を、`doc/requirement.md` §4.7 の記述と実際に突き合わせる。
+
+- `npm run tauri dev` で起動し、以下を手順どおりに確認する。
+  1. 新規作成直後はタブが1つ(空の図)であること。
+  2. 「+」でタブを追加し、それぞれ別の構造化テンプレート(例: ガントチャートとマトリクス)を配置する。タブの切り替えで表示内容が正しく入れ替わること。
+  3. タブ名をダブルクリックで変更できること。タブをドラッグして順序を入れ替えられること。
+  4. 「名前を付けて保存」で `.qct` に保存し、「新規作成」→「開く」でそのファイルを開き直す。タブの数・順序・名前・各タブの内容・アクティブタブが保存前と一致していること。
+  5. いずれかのタブを編集した状態(未保存)で「新規作成」を実行し、「保存する」「保存しない」「キャンセル」それぞれの選択で§4.7どおりの挙動になることを確認する(保存する→保存後に新規プロジェクトへ切り替わる、保存しない→変更を破棄して切り替わる、キャンセル→何も起きず編集を継続できる)。同様の確認を「開く」「直近使用ファイル」からの再オープンでも行う。
+  6. タブが1枚だけの状態で×ボタン・`Ctrl+W` を試し、タブが閉じられない(無視される)ことを確認する。
+  7. 本機能導入前の形式(単一 `Document` 直下、`tabs` フィールドなし)の `.qct` ファイルを用意して開き、単一タブとして正しく復元されることを確認する。
+- **最終確認**: `npm test`(Vitest)・`cargo test` が全件成功すること。`doc/requirement.md` §4.7 の各箇条を上記手順ですべて突き合わせたことを確認する。

@@ -41,7 +41,6 @@ export interface StructuredBlock {
 }
 
 export interface Document {
-  formatVersion: number;
   shapes: Record<ShapeId, Shape>;
   layers: Layer[];
   structuredBlocks: StructuredBlock[];
@@ -52,7 +51,6 @@ export const DEFAULT_LAYER_ID = "default";
 
 export function createEmptyDocument(): Document {
   return {
-    formatVersion: 1,
     shapes: {},
     layers: [
       {

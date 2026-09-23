@@ -2,7 +2,9 @@ import { create } from "zustand";
 import { produce } from "immer";
 import { v4 as uuidv4 } from "uuid";
 import type { Document } from "../model/document";
-import { createEmptyDocument, DEFAULT_LAYER_ID } from "../model/document";
+import { DEFAULT_LAYER_ID } from "../model/document";
+import type { DocumentTab, ProjectFile } from "../model/project";
+import { createDocumentTab, createEmptyProjectFile, PROJECT_FORMAT_VERSION } from "../model/project";
 import type { Point, Shape, ShapeId, ShapePatch } from "../model/shape";
 import type { StructuredBlock } from "../model/document";
 import type { UserTemplate } from "../model/userTemplate";
@@ -78,20 +80,41 @@ function applyZOrder(draft: Document, ids: ShapeId[], direction: ZOrderDirection
 }
 
 interface DocumentState {
+  // Multiple tabs (doc/requirement.md §4.7, doc/spec.md §4.1): `document`/
+  // `canUndo`/`canRedo` below are derived from whichever tab is active, kept
+  // as plain fields so the ~20 existing `useDocumentStore((s) => s.document)`
+  // call sites (and every addShape/updateOutlineNodeText/etc. action) don't
+  // need to change at all.
+  tabs: DocumentTab[];
+  activeTabId: string;
   document: Document;
   clipboard: Shape[];
   canUndo: boolean;
   canRedo: boolean;
+  // Unsaved-changes flag for the whole project file (doc/spec.md §9.2), not
+  // per tab - saving/opening/creating a project always covers every tab.
+  isDirty: boolean;
   undo: () => void;
   redo: () => void;
   // Project file identity (doc/spec.md §9). null until the document has been
   // saved/opened as a real file at least once.
   currentFilePath: string | null;
   setCurrentFilePath: (path: string | null) => void;
-  // Replaces the whole document (New / Open a different file). Undo/Redo
-  // history is reset since undoing across a file switch makes no sense.
-  newDocument: () => void;
-  loadDocument: (doc: Document, path: string | null) => void;
+  // Replaces the whole project (New / Open a different file). Undo/Redo
+  // history is reset for every tab since undoing across a file switch makes
+  // no sense.
+  newProject: () => void;
+  loadProject: (file: ProjectFile, path: string | null) => void;
+  // Snapshots the current tabs for saving (doc/spec.md §9.1).
+  buildProjectFile: () => ProjectFile;
+  markSaved: () => void;
+
+  addTab: () => string;
+  closeTab: (id: string) => void;
+  switchTab: (id: string) => void;
+  renameTab: (id: string, name: string) => void;
+  reorderTabs: (draggedId: string, targetId: string) => void;
+
   addShape: (shape: Shape) => void;
   updateShape: (id: ShapeId, patch: ShapePatch) => void;
   // Same as calling updateShape for each entry, but as a single undo step (e.g.
@@ -154,79 +177,220 @@ interface DocumentState {
 }
 
 export const useDocumentStore = create<DocumentState>((set, get) => {
-  const history = new DocumentHistory<Document>();
-  // Snapshot of `document` taken at the start of the current pointer gesture
-  // (drag/resize/rotate), used by commitGesture() to record one history step
-  // for the whole gesture. Null when no gesture is in progress.
+  // One Undo/Redo history per tab (doc/spec.md §4.1), keyed by DocumentTab.id.
+  // Histories survive tab switches (switching away and back keeps that tab's
+  // stack intact) and are discarded when a tab is closed or the whole project
+  // is replaced.
+  const histories = new Map<string, DocumentHistory<Document>>();
+  // Snapshot of the active tab's `document` taken at the start of the current
+  // pointer gesture (drag/resize/rotate), used by commitGesture() to record
+  // one history step for the whole gesture. Null when no gesture is in
+  // progress. A gesture is assumed to never span a tab switch (doc/spec.md
+  // §4.1: the canvas holds pointer focus during a drag, so the tab bar can't
+  // be operated mid-gesture).
   let gestureStart: Document | null = null;
 
-  // All document edits that should be undoable go through this helper. Actions
-  // that only touch `clipboard` (copyShapes) bypass it and call `set` directly,
-  // since the clipboard is excluded from Undo/Redo (see doc/spec.md §4).
+  function historyFor(tabId: string): DocumentHistory<Document> {
+    let history = histories.get(tabId);
+    if (!history) {
+      history = new DocumentHistory<Document>();
+      histories.set(tabId, history);
+    }
+    return history;
+  }
+
+  // All document edits that should be undoable go through this helper, which
+  // applies `recipe` to the *active* tab only. Actions that only touch
+  // `clipboard` (copyShapes) bypass it and call `set` directly, since the
+  // clipboard is excluded from Undo/Redo (see doc/spec.md §4) and shared
+  // across tabs (doc/spec.md §4.1).
   function change(recipe: (draft: Document) => void, newIds: ShapeId[] = []): ShapeId[] {
-    const next = history.apply(get().document, recipe);
-    if (next !== get().document) {
-      set({ document: next, canUndo: history.canUndo, canRedo: history.canRedo });
+    const state = get();
+    const activeIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
+    if (activeIndex === -1) return newIds;
+    const activeTab = state.tabs[activeIndex];
+    const history = historyFor(activeTab.id);
+    const next = history.apply(activeTab.document, recipe);
+    if (next !== activeTab.document) {
+      const tabs = state.tabs.slice();
+      tabs[activeIndex] = { ...activeTab, document: next };
+      set({ tabs, document: next, canUndo: history.canUndo, canRedo: history.canRedo, isDirty: true });
     }
     return newIds;
   }
 
+  const initialProject = createEmptyProjectFile();
+
   return {
-    document: createEmptyDocument(),
+    tabs: initialProject.tabs,
+    activeTabId: initialProject.activeTabId,
+    document: initialProject.tabs[0].document,
     clipboard: [],
     canUndo: false,
     canRedo: false,
+    isDirty: false,
     currentFilePath: null,
 
     undo: () => {
-      const next = history.undo(get().document);
-      if (next) set({ document: next, canUndo: history.canUndo, canRedo: history.canRedo });
+      const state = get();
+      const activeIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
+      if (activeIndex === -1) return;
+      const activeTab = state.tabs[activeIndex];
+      const history = historyFor(activeTab.id);
+      const next = history.undo(activeTab.document);
+      if (!next) return;
+      const tabs = state.tabs.slice();
+      tabs[activeIndex] = { ...activeTab, document: next };
+      set({ tabs, document: next, canUndo: history.canUndo, canRedo: history.canRedo, isDirty: true });
     },
     redo: () => {
-      const next = history.redo(get().document);
-      if (next) set({ document: next, canUndo: history.canUndo, canRedo: history.canRedo });
+      const state = get();
+      const activeIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
+      if (activeIndex === -1) return;
+      const activeTab = state.tabs[activeIndex];
+      const history = historyFor(activeTab.id);
+      const next = history.redo(activeTab.document);
+      if (!next) return;
+      const tabs = state.tabs.slice();
+      tabs[activeIndex] = { ...activeTab, document: next };
+      set({ tabs, document: next, canUndo: history.canUndo, canRedo: history.canRedo, isDirty: true });
     },
 
     setCurrentFilePath: (path) => set({ currentFilePath: path }),
 
-    newDocument: () => {
-      history.clear();
+    newProject: () => {
+      histories.clear();
       gestureStart = null;
+      const project = createEmptyProjectFile();
       set({
-        document: createEmptyDocument(),
+        tabs: project.tabs,
+        activeTabId: project.activeTabId,
+        document: project.tabs[0].document,
         clipboard: [],
         currentFilePath: null,
         canUndo: false,
         canRedo: false,
+        isDirty: false,
       });
     },
 
-    loadDocument: (doc, path) => {
-      history.clear();
+    loadProject: (file, path) => {
+      histories.clear();
       gestureStart = null;
-      set({ document: doc, clipboard: [], currentFilePath: path, canUndo: false, canRedo: false });
+      const activeTab = file.tabs.find((tab) => tab.id === file.activeTabId) ?? file.tabs[0];
+      set({
+        tabs: file.tabs,
+        activeTabId: activeTab.id,
+        document: activeTab.document,
+        clipboard: [],
+        currentFilePath: path,
+        canUndo: false,
+        canRedo: false,
+        isDirty: false,
+      });
+    },
+
+    buildProjectFile: () => {
+      const state = get();
+      return { formatVersion: PROJECT_FORMAT_VERSION, tabs: state.tabs, activeTabId: state.activeTabId };
+    },
+
+    markSaved: () => set({ isDirty: false }),
+
+    addTab: () => {
+      const state = get();
+      const tab = createDocumentTab(`タブ${state.tabs.length + 1}`);
+      set({
+        tabs: [...state.tabs, tab],
+        activeTabId: tab.id,
+        document: tab.document,
+        canUndo: false,
+        canRedo: false,
+        isDirty: true,
+      });
+      return tab.id;
+    },
+
+    closeTab: (id) => {
+      const state = get();
+      if (state.tabs.length <= 1) return;
+      const index = state.tabs.findIndex((tab) => tab.id === id);
+      if (index === -1) return;
+      histories.delete(id);
+      const tabs = state.tabs.filter((tab) => tab.id !== id);
+      const activeTabId = state.activeTabId === id ? tabs[Math.min(index, tabs.length - 1)].id : state.activeTabId;
+      const activeTab = tabs.find((tab) => tab.id === activeTabId)!;
+      const history = historyFor(activeTabId);
+      set({
+        tabs,
+        activeTabId,
+        document: activeTab.document,
+        canUndo: history.canUndo,
+        canRedo: history.canRedo,
+        isDirty: true,
+      });
+    },
+
+    switchTab: (id) => {
+      const state = get();
+      const tab = state.tabs.find((t) => t.id === id);
+      if (!tab) return;
+      const history = historyFor(id);
+      set({ activeTabId: id, document: tab.document, canUndo: history.canUndo, canRedo: history.canRedo });
+    },
+
+    renameTab: (id, name) => {
+      set((state) => ({
+        tabs: state.tabs.map((tab) => (tab.id === id ? { ...tab, name } : tab)),
+        isDirty: true,
+      }));
+    },
+
+    reorderTabs: (draggedId, targetId) => {
+      set((state) => {
+        if (draggedId === targetId) return state;
+        const tabs = state.tabs.slice();
+        const fromIndex = tabs.findIndex((tab) => tab.id === draggedId);
+        const toIndex = tabs.findIndex((tab) => tab.id === targetId);
+        if (fromIndex === -1 || toIndex === -1) return state;
+        const [moved] = tabs.splice(fromIndex, 1);
+        tabs.splice(toIndex, 0, moved);
+        return { tabs, isDirty: true };
+      });
     },
 
     beginGesture: () => {
-      gestureStart = get().document;
+      const state = get();
+      gestureStart = state.tabs.find((tab) => tab.id === state.activeTabId)?.document ?? null;
     },
 
     updateShapeTransient: (id, patch) => {
-      set((state) => ({
-        document: produce(state.document, (draft) => {
+      set((state) => {
+        const activeIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
+        if (activeIndex === -1) return state;
+        const activeTab = state.tabs[activeIndex];
+        const nextDoc = produce(activeTab.document, (draft) => {
           const existing = draft.shapes[id];
           if (!existing) return;
           Object.assign(existing, patch);
-        }),
-      }));
+        });
+        const tabs = state.tabs.slice();
+        tabs[activeIndex] = { ...activeTab, document: nextDoc };
+        return { tabs, document: nextDoc };
+      });
     },
 
     commitGesture: () => {
       if (!gestureStart) return;
       const before = gestureStart;
       gestureStart = null;
-      history.commit(before, get().document);
-      set({ canUndo: history.canUndo, canRedo: history.canRedo });
+      const state = get();
+      const activeIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
+      if (activeIndex === -1) return;
+      const activeTab = state.tabs[activeIndex];
+      const history = historyFor(activeTab.id);
+      history.commit(before, activeTab.document);
+      set({ canUndo: history.canUndo, canRedo: history.canRedo, isDirty: true });
     },
 
     addShape: (shape) => {

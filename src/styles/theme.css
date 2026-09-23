@@ -529,10 +529,126 @@ body {
   color: #ffffff;
 }
 
+.canvas-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
 .canvas-container {
   position: relative;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
+}
+
+.tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #f7f8fa;
+  border-bottom: 1px solid #d9dee5;
+  overflow-x: auto;
+}
+
+.tab-bar-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 6px 6px 10px;
+  font-size: 13px;
+  border: 1px solid #d9dee5;
+  border-radius: 4px;
+  background: #ffffff;
+  cursor: pointer;
+  max-width: 200px;
+}
+
+.tab-bar-tab.active {
+  border-color: #2563eb;
+  background: #eaf1fd;
+}
+
+.tab-bar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-bar-rename-input {
+  width: 100px;
+  padding: 2px 4px;
+  font-size: 13px;
+  border: 1px solid #2563eb;
+  border-radius: 2px;
+}
+
+.tab-bar-close {
+  flex: none;
+  padding: 0 4px;
+  font-size: 12px;
+  line-height: 1;
+  border: none;
+  background: transparent;
+  color: #8a94a3;
+  cursor: pointer;
+}
+
+.tab-bar-close:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.tab-bar-add {
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid #d9dee5;
+  border-radius: 4px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.confirm-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(31, 41, 51, 0.4);
+}
+
+.confirm-dialog {
+  min-width: 320px;
+  max-width: 420px;
+  padding: 20px;
+  background: #ffffff;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.confirm-dialog-message {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: #1f2933;
+}
+
+.confirm-dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.confirm-dialog-buttons button {
+  padding: 6px 14px;
+  font-size: 13px;
+  border: 1px solid #d9dee5;
+  border-radius: 4px;
+  background: #ffffff;
+  cursor: pointer;
 }
 
 .canvas-svg {

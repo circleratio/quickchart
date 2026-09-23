@@ -40,6 +40,10 @@ quickchart/
 │  │  │  ├─ SelectionOverlay.tsx    # 選択/リサイズ/回転ハンドル(react-moveable)
 │  │  │  ├─ ConnectorRenderer.tsx   # コネクタの追従描画
 │  │  │  └─ GuidesAndSnap.tsx       # グリッド・ガイド線・スナップの可視化
+│  │  ├─ tabs/
+│  │  │  └─ TabBar.tsx              # 中央上部: タブバー(§4.1, §5.2)
+│  │  ├─ common/
+│  │  │  └─ ConfirmDialog.tsx       # 汎用の確認モーダル(§9.2 の3択確認で使用)
 │  │  ├─ panels/
 │  │  │  ├─ ToolPanel.tsx           # 左パネル: 図形ツール(アイコンボタン、§5.1)
 │  │  │  ├─ CommandPalette.tsx      # ツール切り替え用コマンドパレット(§5.1)
@@ -47,16 +51,17 @@ quickchart/
 │  │  │  ├─ PropertyPanel.tsx       # 右パネル: プロパティ(スタイル/位置/サイズ)
 │  │  │  └─ StructuredTextPanel.tsx # 構造化テンプレート用の階層テキスト入力
 │  │  └─ toolbar/
-│  │     └─ Toolbar.tsx             # 上部: 保存・エクスポート・Undo/Redo・ズーム
+│  │     └─ Toolbar.tsx             # 上部: 保存・エクスポート・Undo/Redo・ズーム・未保存確認(§9.2)
 │  ├─ core/
 │  │  ├─ model/
 │  │  │  ├─ shape.ts                # Shape 型(共通 + 各図形種別)
-│  │  │  ├─ document.ts             # Document/Layer 型
+│  │  │  ├─ document.ts             # Document/Layer 型(1タブ分のキャンバス内容、§3.2)
+│  │  │  ├─ project.ts              # ProjectFile/DocumentTab 型(複数タブの入れ物、§3.3)
 │  │  │  ├─ style.ts                # スタイル・配色プリセット型
 │  │  │  └─ userTemplate.ts         # UserTemplate 型
 │  │  ├─ store/
-│  │  │  ├─ documentStore.ts        # Zustand ストア(図形/レイヤー/構造化テキスト)
-│  │  │  ├─ historyMiddleware.ts    # Undo/Redo(immer patch ベース)
+│  │  │  ├─ documentStore.ts        # Zustand ストア(タブ配列+アクティブタブの図形/レイヤー/構造化テキスト、§4.1)
+│  │  │  ├─ historyMiddleware.ts    # Undo/Redo(immer patch ベース、タブごとに1インスタンス)
 │  │  │  └─ selectionStore.ts       # 選択状態
 │  │  ├─ templates/
 │  │  │  ├─ outlineParser.ts        # 階層テキスト(アウトライン記法)パーサ
@@ -69,7 +74,7 @@ quickchart/
 │  │  │  ├─ snap.ts                 # グリッドスナップ計算
 │  │  │  └─ align.ts                # 整列・分布計算
 │  │  └─ io/
-│  │     ├─ projectFile.ts          # プロジェクトファイルのシリアライズ(型⇔JSON)
+│  │     ├─ projectFile.ts          # プロジェクトファイルのシリアライズ・旧形式マイグレーション(型⇔JSON、§3.3)
 │  │     └─ tauriApi.ts             # Tauri invoke() ラッパー
 │  └─ styles/
 │     └─ theme.css
@@ -140,7 +145,6 @@ interface StructuredBlock {
 }
 
 interface Document {
-  formatVersion: number;          // プロジェクトファイルのスキーマバージョン
   shapes: Record<ShapeId, Shape>;
   layers: Layer[];
   structuredBlocks: StructuredBlock[];
@@ -148,11 +152,30 @@ interface Document {
 }
 ```
 
-### 3.3 プロジェクトファイル形式
+`Document` は要求仕様 4.7 の「1タブ=1つの独立した図」に対応する、**1タブぶんのキャンバス内容**を表す型である。従来ここに直接持たせていた `formatVersion` は、複数タブ対応(§3.3)にあたりファイル全体の型(`ProjectFile`)側に一本化したため削除した(1ファイル内の全タブが常に同じスキーマバージョンであるべきで、タブごとに別バージョンを持てる意味がないため)。
 
-- 拡張子 `.qct`。内容は上記 `Document` を JSON にシリアライズしたものを正とする。
+### 3.3 複数タブ・プロジェクトファイル形式
+
+要求仕様 4.7「複数タブでの編集」に対応する、`Document` を束ねる入れ物の型を追加する。
+
+```ts
+interface DocumentTab {
+  id: string;                     // uuid v4。タブの識別子で、名前変更・並べ替えでも不変
+  name: string;                   // タブ名(ユーザーが変更可、既定は "タブ1" 等の連番)
+  document: Document;
+}
+
+interface ProjectFile {
+  formatVersion: number;          // プロジェクトファイル全体のスキーマバージョン(ProjectFile自身の新規のバージョン系列。1から開始)
+  tabs: DocumentTab[];             // 表示順 = 保存順。最低1件
+  activeTabId: string;             // 保存時点でアクティブだったタブ(復元時にそのタブをアクティブにする)
+}
+```
+
+- 拡張子 `.qct`。内容は上記 `ProjectFile` を JSON にシリアライズしたものを正とする。
 - 要求仕様 4.6 は「JSON+SVGベースなど」と例示しているが、実際の保存形式は **JSON のみ** とし、SVG はプロジェクトファイルに保持しない。表示・エクスポート用の SVG はいつでも `Document` から再生成できるため、二重管理による不整合を避ける。エクスポート(4.5)は別ファイルへの書き出しという位置付けなので、この方針は要求仕様と矛盾しない。
-- `formatVersion` を先頭に持たせ、将来のスキーマ変更に備えたマイグレーション関数(`migrateDocument(doc, fromVersion)`)を `projectFile.ts` に用意する。
+- `formatVersion` を先頭に持たせ、将来のスキーマ変更に備えたマイグレーション関数を `projectFile.ts` に用意する。**旧形式(本機能導入前の、`ProjectFile` ではなく `Document` そのものがファイル直下にあった形式。`Document.formatVersion: 1`)のファイルを開いた場合**、`tabs` フィールドの有無で旧形式と判定し、その `Document`(旧 `formatVersion` フィールドは破棄)を唯一のタブ("タブ1")として包んだ `ProjectFile`(`formatVersion: 1`。旧 `Document.formatVersion` とは独立した、`ProjectFile` 自身の新しいバージョン系列)に変換して読み込む。この変換はファイルの再保存時に新形式で書き戻されるのみで、変換自体をユーザーに意識させない(既存の `migrateDocument` と同じ「開けば自動的に最新形式になる」方針)。
+- Rust バックエンド(`project_file.rs`/`commands/project.rs`)はファイル内容を常に opaque な `serde_json::Value` として素通しするため、この変更に伴う Rust 側の変更は不要(§10 参照)。
 
 ### 3.4 ユーザーテンプレート
 
@@ -174,6 +197,47 @@ interface UserTemplate {
   - 構造化テンプレートの再生成(アウトライン編集による図形の一括追加/削除)も 1 回の操作として 1 セットの patch にまとめ、Undo で一括して戻せるようにする。
 - `selectionStore` は Undo/Redo の対象外(選択状態は履歴に含めない)。
 
+### 4.1 複数タブと状態管理
+
+要求仕様 4.7 に対応する。既存の `documentStore` の外部APIをできる限り変えず(`document`/`canUndo`/`canRedo` 等を購読する既存コンポーネント約20箇所、`addShape` 等の図形/構造化テンプレート操作アクション群を呼び出す既存コード全体に影響を及ぼさないため)、「複数タブの配列」と「そのうちどれがアクティブか」を追加し、`document`/`canUndo`/`canRedo` は**アクティブなタブから導出される値**に変える、という最小差分の設計にする。
+
+```ts
+interface DocumentTabState { id: string; name: string; document: Document }
+
+interface DocumentState {
+  tabs: DocumentTabState[];
+  activeTabId: string;
+  document: Document;          // 導出値: tabs.find(t => t.id === activeTabId).document
+  canUndo: boolean;            // 導出値: アクティブタブの履歴インスタンスから
+  canRedo: boolean;
+  currentFilePath: string | null;  // 従来どおりプロジェクト(ファイル)単位、タブ単位ではない
+  isDirty: boolean;             // 新規。§9.2 の未保存確認で使う
+
+  // 図形/構造化テンプレート操作(addShape, updateOutlineNodeText 等、既存のシグネチャは無変更)
+  // は内部でアクティブタブの document を書き換えるようになるだけで、呼び出し側の変更は不要。
+
+  undo: () => void;             // アクティブタブの履歴のみを操作
+  redo: () => void;
+
+  newProject: () => void;                                    // 旧 newDocument() を置き換え
+  loadProject: (file: ProjectFile, path: string | null) => void; // 旧 loadDocument() を置き換え
+  buildProjectFile: () => ProjectFile;                        // 保存時に tabs+activeTabId をシリアライズ用に取り出す
+  markSaved: () => void;                                      // isDirty を false に戻す(保存成功後に呼ぶ)
+
+  addTab: () => string;                    // 空のタブを新規作成してアクティブにし、その id を返す
+  closeTab: (id: string) => void;          // tabs.length === 1 のときは何もしない(要求仕様: 最後の1枚は閉じられない)
+  switchTab: (id: string) => void;
+  renameTab: (id: string, name: string) => void;
+  reorderTabs: (draggedId: string, targetId: string) => void; // draggedId を targetId の直前に移動する
+}
+```
+
+- **タブごとの Undo/Redo 履歴**: `DocumentHistory<Document>`(`historyMiddleware.ts`、既存のまま変更しない)のインスタンスを `Map<tabId, DocumentHistory<Document>>` として持つ(ストアのクロージャ内、既存の単一 `history` 変数と同じ持ち方)。`change()` ヘルパーはアクティブタブの `id` でこの Map を引いて(初回アクセス時に生成)、そのタブの `document` にのみ recipe を適用する。**タブを切り替えても各タブの履歴は保持されたまま**になる(切り替えて戻ってくれば続きから Undo できる)。`closeTab` はこの Map から該当エントリを破棄する。
+- **`isDirty` の管理**: `change()`(図形/構造化テンプレートの変更)と `commitGesture()`(ドラッグ等の確定)、および `addTab`/`closeTab`/`renameTab`/`reorderTabs` の呼び出し時に `true` にする。`newProject()`/`loadProject()`/`markSaved()` で `false` に戻す。ドラッグ中の中間フレーム(`updateShapeTransient`)は履歴に記録されない一時状態のため `isDirty` を更新しない(どのみち `commitGesture()` で確定時に `true` になる)。
+- **タブ切り替え時の選択状態のリセット**: `selectionStore`(選択図形・編集中図形)と `structuredEditorStore`(アクティブな構造化ブロックID)はいずれも「アクティブなタブの `document` の中身」を指す一時的なIDを保持しているため、`switchTab`(および `newProject`/`loadProject`)を呼ぶ側(`TabBar.tsx`/`Toolbar.tsx`)で `useSelectionStore.getState().clear()` と `useStructuredEditorStore.getState().setActiveBlockId(null)` を合わせて呼び出す(`Toolbar.tsx` の `handleOpen` が既に `useSelectionStore.getState().clear()` を行っている既存パターンを踏襲・拡張する)。
+- **`clipboard`(コピー&ペースト)と `copiedStyle`(書式のコピペ)はタブ非依存のまま**とする(タブをまたいでコピー&ペーストや書式コピーができる方が自然で、要求仕様もこれを禁じていないため)。
+- **ジェスチャー中のタブ切り替えは考慮しない**: `beginGesture`/`commitGesture` の間(ポインタのドラッグ中)はキャンバスがフォーカスを持ちタブバー操作を受け付けないため、ジェスチャーの開始から終了までアクティブタブが変わることは実際には起きない前提を置く(`gestureStart` はクロージャ内の単一変数のままでよい)。
+
 ## 5. キャンバス・図形操作(自由配置)
 
 - 選択・リサイズ・回転ハンドルの実装には **react-moveable** を使う。SVG 要素(`rect`/`ellipse`/`g` など)を直接対象にでき、要求仕様の「SVGをDOMとして直接操作する」方針と合致する。
@@ -193,6 +257,22 @@ interface UserTemplate {
   - **キーボード操作**: 入力欄はモーダルを開いた時点で自動フォーカスする。`↑`/`↓` で候補選択を移動、`Enter` で確定、`Escape` で閉じる。これらは(`StructuredTextPanel.tsx` の行内入力の `Tab`/`Enter` 処理と同様)入力欄自身の `onKeyDown` で処理し、`App.tsx` 側のグローバルハンドラ(テキスト入力中はショートカットを無視する既存ガードがあるため)には依存しない。候補のクリック確定にも対応する。
   - **確定時の挙動**: 選択したツールを `activeTool` に反映し(`ToolPanel.tsx` のアイコンボタンと同じ `onSelectTool` コールバックを共有)、パレットを閉じる。
   - **状態管理**: パレットの開閉・検索文字列は `App.tsx` のローカル state(`activeTool`/`pendingUserTemplate` と同じ持ち方)とする。他コンポーネントから参照される共有状態ではないため、専用の Zustand ストアは設けない。
+
+### 5.2 タブバー
+
+要求仕様 4.7・UI構成(要求仕様7章)に対応する。`TabBar.tsx` をツールバー(`Toolbar.tsx`)とキャンバス(`Canvas.tsx`)の間、中央上部に配置する。要求仕様9章オープンクエスチョンの「タブバーのUI詳細」はここで確定する。
+
+- **見た目**: `documentStore` の `tabs` を左から表示順どおりに横並びの矩形ボタンとして描画する(本アプリの既存ボタン群と同じ、装飾を抑えた見た目。ブラウザタブのような台形・折れ線カットは採用しない)。アクティブなタブは背景色を変えてハイライトする(`.user-template-button.active` 等、既存の「選択中」表現と同じ考え方)。各タブの右端に閉じるボタン(`×`、既存の削除ボタンと同じ表記)を持ち、タブが1枚のみのときは非活性化する(要求仕様: 最後の1枚は閉じられない)。末尾に「+」ボタンを置き、クリックで `addTab()` を呼ぶ。
+- **切り替え**: タブ本体のクリックで `switchTab(id)`(closeボタン自身のクリックとイベントが競合しないよう、closeボタン側で `stopPropagation` する)。
+- **名前変更**: タブラベルのダブルクリックで、そのタブのボタンをテキスト入力(`<input>`)に一時的に差し替えるインライン編集にする(`StructuredTextPanel.tsx` の行内入力編集と同じ考え方)。`Enter`/フォーカスアウトで `renameTab(id, value)` を確定、`Escape` で編集前の値に戻して閉じる。空文字での確定は許可しない(既定名のまま据え置く)。
+- **並べ替え**: HTML5 標準のドラッグ&ドロップ API(`draggable`属性 + `onDragStart`/`onDragOver`/`onDrop`)をタブ要素に直接持たせて実装する(本アプリに既存のドラッグ実装(`react-moveable`)はキャンバス上の図形操作専用のためタブバーには使えず、新規ライブラリを追加するほどの複雑さでもないため、ネイティブAPIで足りると判断)。ドロップ時に `reorderTabs(draggedId, targetId)` を呼ぶ。
+- **右クリックメニューは設けない**: 閉じる(×)・名前変更(ダブルクリック)・追加(+)・並べ替え(ドラッグ)のいずれも可視のUI操作で到達できるため、MVPでは右クリックの専用コンテキストメニューを追加しない見送りとする。
+- **キーボードショートカット**: `App.tsx` の既存 `handleKeyDown` に追加する。
+  - `Ctrl+T`(Mac `Cmd+T`): `addTab()`
+  - `Ctrl+Tab` / `Ctrl+Shift+Tab`: 次/前のタブへ `switchTab()`(端のタブでは反対側の端へ循環する)
+  - `Ctrl+W`(Mac `Cmd+W`): アクティブなタブを `closeTab()`(最後の1枚のときは何も起きない)
+  - いずれもブラウザ本来のタブ操作ショートカットと同名にして、対象ユーザー(ブラウザのタブ操作に慣れたビジネスパーソン、要求仕様2章)の既存の習熟を再利用する狙い。
+- **タブを閉じる操作はUndo/Redo・確認ダイアログの対象外**とする(§4.1: 閉じたタブの履歴はその場で破棄され、Undoで復元できない)。プロジェクト全体の保存有無の確認(§9.2)は「別ファイルを開く/新規作成する」ときのみ働く仕組みであり、同じファイル内でのタブの追加・削除・並べ替え・名前変更にはこの確認は挟まない(要求仕様4.7も、確認を求めているのは「別のファイルを開いた場合」のみで、タブ操作自体は対象外)。誤って閉じたタブを保持したい場合は、閉じる前に保存しておくことをユーザーに委ねる(MVPでの割り切り)。
 
 ## 6. 構造化テンプレート生成
 
@@ -511,9 +591,37 @@ Markdown の箇条書きに近い、インデント+ハイフンのアウトラ�
 
 ## 9. プロジェクト管理
 
+### 9.1 保存・オープン
+
 - 直近使用ファイル一覧は Tauri のアプリ設定ディレクトリ(`app_config_dir()`)に `recent_files.json` として保存し、`recent_files.rs` が読み書きを担う(最大件数はさしあたり10件)。
-- 新規作成・開く・保存・名前を付けて保存は `commands/project.rs` の Tauri コマンド(`project_new` は実質フロントエンド側で空 `Document` を生成するのみ、`project_open`/`project_save`/`project_save_as` はファイルダイアログ+I/O)として実装する。
+- 新規作成・開く・保存・名前を付けて保存は `commands/project.rs` の Tauri コマンド(`project_new` は実質フロントエンド側で空 `ProjectFile` を生成するのみ、`project_open`/`project_save`/`project_save_as` はファイルダイアログ+I/O)として実装する。保存/読み込みの単位は要求仕様4.7のとおり常にプロジェクトファイル1つぶん(中の全タブ)であり、タブ単位の保存はない。
 - ユーザーテンプレート(§3.4, §6.4)は同様にアプリ設定ディレクトリに `user_templates.json` として保存し、`user_templates.rs` が読み書きを担う。
+
+### 9.2 別ファイルを開く際の未保存確認
+
+要求仕様 4.7 の「編集中のファイルとは別のファイルを開こうとした場合」の確認フローに対応する。`Toolbar.tsx` の「新規作成」「開く」「直近使用ファイル」の3操作はすべて「別のファイルへの切り替え」に当たるため、共通のガード関数を通す。
+
+```ts
+// Toolbar.tsx 内。action は実際の切り替え処理(newProject()呼び出し、
+// または projectOpen()+loadProject() 呼び出し)。
+async function withUnsavedChangesGuard(action: () => Promise<void> | void): Promise<void> {
+  if (!useDocumentStore.getState().isDirty) return action();
+  const choice = await confirmDiscard(); // ConfirmDialog.tsx を開いて "save" | "discard" | "cancel" を待つ
+  if (choice === "cancel") return;
+  if (choice === "save") {
+    const saved = await handleSave(); // 既存の保存処理。戻り値は保存できたかどうか(下記)
+    if (!saved) return; // ネイティブ保存ダイアログのキャンセル等は §4.7 の「キャンセル」と同様に扱う
+  }
+  return action();
+}
+```
+
+- **表示する選択肢**: 「保存する」「保存しない」「キャンセル」の3ボタン(要求仕様4.7で確定済み)。`ConfirmDialog.tsx`(汎用モーダル、§2)に文言("現在のファイルに未保存の変更があります。保存しますか？"等)とボタン定義を渡して表示する。
+- **「保存する」を選んだ場合**: 既存の `handleSave()` をそのまま呼ぶ(`currentFilePath` があれば上書き保存、無ければ名前を付けて保存ダイアログ)。`handleSave()` は保存が完了したかどうかを `boolean` で返すよう変更する(ネイティブダイアログの「キャンセル」は Tauri 側で `dialog_cancelled` エラーになる、§11参照。この場合は保存できていないので `false` を返し、ファイル切り替え自体を中止する)。
+- **「保存しない」を選んだ場合**: 何もせず(=変更を破棄したまま)`action()` を実行する。
+- **「キャンセル」を選んだ場合**: `action()` を呼ばず、現在編集中のファイルの編集をそのまま継続する。
+- **未保存の変更がない場合**(`isDirty === false`): ダイアログを出さず即座に `action()` を実行する(要求仕様4.7の確定事項どおり)。
+- `isDirty` の更新規則は §4.1 のとおり。「保存する」実行後、および `loadProject()`/`newProject()` 実行後は `isDirty` が `false` に戻るため、確認は常に「直前の保存以降に何か変更したか」を正しく反映する。
 
 ## 10. Tauri コマンド(IPC)一覧
 
@@ -533,6 +641,8 @@ Markdown の箇条書きに近い、インデント+ハイフンのアウトラ�
 | `delete_user_template` | `id` | `void` | ユーザーテンプレートを削除 |
 
 すべて `Result<T, AppError>` を返し、`AppError` は `{ kind: string, message: string }` にシリアライズしてフロントエンドへ渡す(11章参照)。
+
+**複数タブ対応(§3.3, §4.1)に伴う `document` フィールドの扱い**: 上表の `project_open`/`project_open_path`/`project_save`/`project_save_as` の `document` は Rust 側では素通しの `serde_json::Value`(§3.3参照)であり、その中身が `Document` から `ProjectFile` に変わっても Rust 側(`project_file.rs`/`commands/project.rs`)のコード変更は不要。フロントエンド(`tauriApi.ts`)側の対応する TypeScript の型・変数名のみ `projectFile`/`ProjectFile` に改める(IPCの引数名・JSONのキー名自体は `document` のまま変更しない - Rust側のコード変更を避けるため)。
 
 ## 11. エラーハンドリング方針
 
@@ -554,6 +664,7 @@ Markdown の箇条書きに近い、インデント+ハイフンのアウトラ�
   - 構造化アウトラインエディタの `addSibling`/`addChild`/`indent`/`deleteNode` 操作それぞれについて、対応する `nodeId` の生成・破棄と図形への反映を検証する。
   - Undo/Redo: 複数操作→Undo連打→Redo連打で状態(スナップショット)が一致することを検証する。
   - ユーザーテンプレート: 複数図形選択→登録→座標正規化→別位置への配置で絶対座標へ正しく変換されることを検証する。
+  - 複数タブ(§4.1, §9.2): タブ追加→切り替え→別タブで編集→元のタブに戻ると編集前の内容のままであることを検証する。タブごとのUndo/Redoが独立していること(タブAで操作→タブBに切り替えてUndoしてもタブAの内容は変化しない)。`closeTab` が最後の1枚では何もしないこと。`isDirty` が変更操作で`true`になり`markSaved`/`newProject`/`loadProject`で`false`に戻ること。`projectFile.ts` の旧形式(`tabs`フィールドなしの`Document`)読み込みが単一タブの`ProjectFile`に変換されることの往復テスト。
 - バックエンド: `cargo test` で `project_file.rs` のシリアライズ/デシリアライズの往復一致、`shape_draw.rs` の Shape→GDI描画命令列への変換ロジック(GDI 呼び出し自体から分離した部分)を検証する。実際の GDI 呼び出し・クリップボード転送は Windows 実行環境に依存するため自動テスト対象外とし、後述の手動動作確認で担保する。
 - E2E テストは MVP の対象外とする(手動動作確認で代替。将来的に Tauri 向け E2E ツールの導入を検討)。
 
@@ -575,3 +686,4 @@ Markdown の箇条書きに近い、インデント+ハイフンのアウトラ�
 | 表の専用オブジェクト化の要否 | 要求仕様どおり見送り。MVPでは矩形等の汎用パーツの組み合わせで代用 |
 | 因果関係図の構造化テンプレート化の要否 | 要求仕様どおり見送り。汎用パーツ+コネクタで手動作図 |
 | 図形ツールのコマンドパレットの詳細仕様 | §5.1: `Ctrl+K`+検索アイコンで起動、`ToolPanel.tsx` と同じ7件のみを検索対象としツール切り替え専用に留める。アイコンは新規ライブラリを追加せず自前SVG |
+| タブバーのUI詳細 | §5.2: 装飾を抑えた矩形タブ+×/+ボタン、ダブルクリックで名前変更、HTML5 D&Dで並べ替え、`Ctrl+T`/`Ctrl+Tab`/`Ctrl+W`のショートカット。右クリックメニューは可視UIで代替可能なため見送り |

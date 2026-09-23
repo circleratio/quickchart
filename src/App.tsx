@@ -6,11 +6,22 @@ import { PropertyPanel } from "./components/panels/PropertyPanel";
 import { TemplateLibraryPanel } from "./components/panels/TemplateLibraryPanel";
 import { StructuredTextPanel } from "./components/panels/StructuredTextPanel";
 import { Toolbar } from "./components/toolbar/Toolbar";
+import { TabBar } from "./components/tabs/TabBar";
 import { useDocumentStore } from "./core/store/documentStore";
 import { useSelectionStore } from "./core/store/selectionStore";
+import { useStructuredEditorStore } from "./core/store/structuredEditorStore";
 import type { Tool } from "./core/model/shape";
 import type { UserTemplate } from "./core/model/userTemplate";
 import "./styles/theme.css";
+
+// Clears UI-only state that points into "whichever tab is active" (selected/
+// editing shape, active structured-template block) whenever the active tab
+// itself changes - these ids are meaningless once the visible canvas swaps to
+// a different tab's document (doc/spec.md §4.1).
+function resetActiveTabUiState() {
+  useSelectionStore.getState().clear();
+  useStructuredEditorStore.getState().setActiveBlockId(null);
+}
 
 function App() {
   const [activeTool, setActiveTool] = useState<Tool>("select");
@@ -56,6 +67,22 @@ function App() {
       } else if (isMod && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPaletteOpen(true);
+      } else if (isMod && e.key === "Tab") {
+        // Cycle tabs (doc/spec.md §5.2), wrapping at either end.
+        e.preventDefault();
+        const { tabs, activeTabId, switchTab } = store;
+        const index = tabs.findIndex((tab) => tab.id === activeTabId);
+        const nextIndex = e.shiftKey ? (index - 1 + tabs.length) % tabs.length : (index + 1) % tabs.length;
+        switchTab(tabs[nextIndex].id);
+        resetActiveTabUiState();
+      } else if (isMod && e.key.toLowerCase() === "t") {
+        e.preventDefault();
+        store.addTab();
+        resetActiveTabUiState();
+      } else if (isMod && e.key.toLowerCase() === "w") {
+        e.preventDefault();
+        store.closeTab(store.activeTabId);
+        resetActiveTabUiState();
       } else if (e.key === "Delete" || e.key === "Backspace") {
         for (const id of selectedShapeIds) store.removeShape(id);
         useSelectionStore.getState().clear();
@@ -78,12 +105,15 @@ function App() {
           />
           <StructuredTextPanel />
         </div>
-        <Canvas
-          activeTool={activeTool}
-          onShapePlaced={() => setActiveTool("select")}
-          pendingUserTemplate={pendingUserTemplate}
-          onUserTemplatePlaced={() => setPendingUserTemplate(null)}
-        />
+        <div className="canvas-column">
+          <TabBar />
+          <Canvas
+            activeTool={activeTool}
+            onShapePlaced={() => setActiveTool("select")}
+            pendingUserTemplate={pendingUserTemplate}
+            onUserTemplatePlaced={() => setPendingUserTemplate(null)}
+          />
+        </div>
         <PropertyPanel />
       </div>
       <CommandPalette
