@@ -18,7 +18,7 @@ const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
   headingBullets: "見出し付き箇条書き",
   bulletMatrix: "箇条書きマトリクス",
   pyramidChart: "ピラミッド図",
-  schedule: "スケジュール",
+  schedule: "ガントチャート",
   verticalFlow: "フロー図（縦型）",
   horizontalFlow: "フロー図（横型）",
   flowSchedule: "フロースケジュール（縦）",

@@ -119,7 +119,7 @@ function connectionSegments(from: LayoutNode, to: LayoutNode): ConnectorSegment[
   ];
 }
 
-// "スケジュール" (doc/spec.md §6.2.6): a Gantt-style schedule chart. Root
+// "ガントチャート" (doc/spec.md §6.2.6): a Gantt-style schedule chart. Root
 // outline nodes (depth 0) are rows; each root's children (depth 1) are that
 // row's bars, positioned by real calendar dates rather than incrementally
 // placed or index-based like other patterns - a bar's own children (depth 2,
