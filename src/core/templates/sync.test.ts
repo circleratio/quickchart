@@ -914,6 +914,32 @@ describe("chevronFlow blocks (fully-relayouted pattern)", () => {
   });
 });
 
+describe("cycle blocks (fully-relayouted pattern)", () => {
+  it("re-lays out every arrow around the ring when a step is added", () => {
+    let { document, blockId } = sync.addEmptyStructuredBlock(createEmptyDocument(), "cycle");
+    document = sync.addFirstOutlineNode(document, blockId);
+    const firstId = nodeId(document, blockId, 0);
+    const polygonOf = (doc: Document) =>
+      doc.structuredBlocks[0].generatedShapeIds.map((id) => doc.shapes[id]).find((s) => s.type === "polygon" && s.templateNodeIds?.includes(firstId))!;
+    const before = polygonOf(document);
+
+    document = sync.addOutlineSibling(document, blockId, firstId);
+
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    expect(shapes.filter((s) => s.type === "polygon")).toHaveLength(2);
+    expect(polygonOf(document).width).not.toBe(before.width);
+  });
+
+  it("shows the center title as an untracked label", () => {
+    let { document, blockId } = sync.addEmptyStructuredBlock(createEmptyDocument(), "cycleWithEntry");
+    document = sync.addFirstOutlineNode(document, blockId);
+    document = sync.updateCycleTitle(document, blockId, "格差の連鎖");
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    const title = shapes.find((s) => s.type === "text" && s.content === "格差の連鎖");
+    expect(title?.templateNodeIds ?? []).toEqual([]);
+  });
+});
+
 describe("beforeAfter blocks (fully-relayouted pattern)", () => {
   function beforeAfterBlock(doc: Document) {
     const { document, blockId } = sync.addEmptyStructuredBlock(doc, "beforeAfter");

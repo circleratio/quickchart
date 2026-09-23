@@ -35,6 +35,14 @@ const PATTERN_ENTRIES: PatternEntry[] = [
       { id: "chevronFlow", label: "フローチャート", available: true },
     ],
   },
+  {
+    kind: "group",
+    label: "サイクル図",
+    children: [
+      { id: "cycleWithEntry", label: "サイクル図（導入部あり）", available: true },
+      { id: "cycle", label: "サイクル図（円のみ）", available: true },
+    ],
+  },
   { id: "beforeAfter", label: "ビフォーアフター（縦）", available: true, kind: "leaf" },
   { id: "beforeAfterHorizontal", label: "ビフォーアフター（横）", available: true, kind: "leaf" },
 ];

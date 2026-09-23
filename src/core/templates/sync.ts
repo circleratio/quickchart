@@ -37,6 +37,7 @@ import { layoutTimeline } from "./timeline";
 import { layoutBeforeAfter } from "./beforeAfter";
 import { layoutBeforeAfterHorizontal } from "./beforeAfterHorizontal";
 import { layoutChevronFlow } from "./chevronFlow";
+import { layoutCycle } from "./cycle";
 import type { LayoutNode } from "./treeLayout";
 
 // All functions here take a plain Document and return a new plain Document -
@@ -64,7 +65,9 @@ function isFullyRelayoutedPattern(pattern: StructuredBlock["pattern"]): boolean 
     pattern === "timeline" ||
     pattern === "beforeAfter" ||
     pattern === "beforeAfterHorizontal" ||
-    pattern === "chevronFlow"
+    pattern === "chevronFlow" ||
+    pattern === "cycle" ||
+    pattern === "cycleWithEntry"
   );
 }
 
@@ -108,6 +111,12 @@ function flowScheduleHorizontalTitle(params: Record<string, unknown>): string {
 
 // timeline shares the same params.title shape (doc/spec.md §6.2.11).
 function timelineTitle(params: Record<string, unknown>): string {
+  return typeof params.title === "string" ? params.title : "";
+}
+
+// cycle/cycleWithEntry's center title (doc/spec.md §6.2.15) - same
+// params.title shape.
+function cycleTitle(params: Record<string, unknown>): string {
   return typeof params.title === "string" ? params.title : "";
 }
 
@@ -158,7 +167,10 @@ function layoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[], 
   // always-non-negative margin for axis labels (AXIS_MARGIN_X/Y) that must
   // stay intact, and pyramid/logicTree's cursor-based placement already
   // starts at (0, 0), so normalizing them here would be a no-op at best.
-  return pattern === "venn" || pattern === "bulletMatrix" || pattern === "pyramidChart" || pattern === "schedule" || pattern === "beforeAfterHorizontal"
+  return pattern === "venn" || pattern === "bulletMatrix" || pattern === "pyramidChart" || pattern === "schedule" ||
+    pattern === "beforeAfterHorizontal" ||
+    pattern === "cycle" ||
+    pattern === "cycleWithEntry"
     ? normalizeToOrigin(nodes)
     : nodes;
 }
@@ -199,6 +211,10 @@ function rawLayoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[
     }
     case "chevronFlow":
       return layoutChevronFlow(outline);
+    case "cycle":
+      return layoutCycle(outline, cycleTitle(params), false);
+    case "cycleWithEntry":
+      return layoutCycle(outline, cycleTitle(params), true);
     default:
       return [];
   }
@@ -1006,6 +1022,15 @@ export function updateTimelineTitle(doc: Document, blockId: string, title: strin
   return regenerateBlockShapes(doc, updatedBlock, block.outline);
 }
 
+// cycle/cycleWithEntry's center title (doc/spec.md §6.2.15) - same
+// reasoning as updateFlowScheduleTitle above.
+export function updateCycleTitle(doc: Document, blockId: string, title: string): Document {
+  const block = findBlock(doc, blockId);
+  if (!block || (block.pattern !== "cycle" && block.pattern !== "cycleWithEntry")) return doc;
+  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, title } };
+  return regenerateBlockShapes(doc, updatedBlock, block.outline);
+}
+
 // beforeAfterHorizontal's two column headers (doc/spec.md §6.2.13) - same
 // reasoning as updatePyramidChartTitle above, just a pair of fields instead
 // of one.
@@ -1145,7 +1170,9 @@ function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline:
     block.pattern === "timeline" ||
     block.pattern === "beforeAfter" ||
     block.pattern === "beforeAfterHorizontal" ||
-    block.pattern === "chevronFlow"
+    block.pattern === "chevronFlow" ||
+    block.pattern === "cycle" ||
+    block.pattern === "cycleWithEntry"
       ? // flowScheduleHorizontal shares flowSchedule's exact reasoning
         // (untracked title/connector shapes, plus an index-derived number
         // that relayoutBlock would never touch) - see flowSchedule's own
@@ -1187,6 +1214,10 @@ function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline:
         // its "Step N" labels are untracked, index-derived shapes, and
         // indenting a root step under another would strand its shapes like
         // timeline's (see above).
+        //
+        // cycle/cycleWithEntry: every arrow's angle depends on the step
+        // count and its own index, and an indented step's arrow would be
+        // stranded the same way.
         regenerateBlockShapes(doc, block, newOutline)
       : relayoutBlock(doc, block, newOutline);
   return regenerateTreeConnectors(next, block.id);

@@ -27,6 +27,8 @@ const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
   beforeAfter: "ビフォーアフター（縦）",
   beforeAfterHorizontal: "ビフォーアフター（横）",
   chevronFlow: "フローチャート",
+  cycle: "サイクル図（円のみ）",
+  cycleWithEntry: "サイクル図（導入部あり）",
 };
 
 const BULLET_MATRIX_IMPORT_PLACEHOLDER =
@@ -91,6 +93,7 @@ export function StructuredTextPanel() {
   const updateFlowScheduleTitle = useDocumentStore((s) => s.updateFlowScheduleTitle);
   const updateFlowScheduleHorizontalTitle = useDocumentStore((s) => s.updateFlowScheduleHorizontalTitle);
   const updateTimelineTitle = useDocumentStore((s) => s.updateTimelineTitle);
+  const updateCycleTitle = useDocumentStore((s) => s.updateCycleTitle);
   const updateBeforeAfterHorizontalLabels = useDocumentStore((s) => s.updateBeforeAfterHorizontalLabels);
 
   const activeBlockId = useStructuredEditorStore((s) => s.activeBlockId);
@@ -196,6 +199,14 @@ export function StructuredTextPanel() {
           key={`${block.id}-title`}
           title={typeof block.params.title === "string" ? block.params.title : ""}
           onCommit={(title) => updateTimelineTitle(block.id, title)}
+        />
+      )}
+
+      {(block.pattern === "cycle" || block.pattern === "cycleWithEntry") && (
+        <PyramidChartTitleInput
+          key={`${block.id}-title`}
+          title={typeof block.params.title === "string" ? block.params.title : ""}
+          onCommit={(title) => updateCycleTitle(block.id, title)}
         />
       )}
 
@@ -809,7 +820,9 @@ function OutlineRow({
                         ? "バッジ(例: 現場の悩み)"
                         : isChevronFlowDuration
                           ? "所要期間(例: 1週間、空欄可)"
-                          : "項目を入力"
+                          : pattern === "cycleWithEntry" && depth === 0 && index === 0
+                            ? "導入部(ループに入る前の段階)"
+                            : "項目を入力"
             }
             onChange={(e) => updateOutlineNodeText(blockId, node.id, e.target.value)}
             onKeyDown={handleKeyDown}
