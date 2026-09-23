@@ -42,6 +42,7 @@ fn main() {
             to_anchor: None,
             points: None,
             corner_radius: None,
+            bullet_marker: None,
         }
     }
 
@@ -74,6 +75,7 @@ fn main() {
             to_anchor: None,
             points: None,
             corner_radius: None,
+            bullet_marker: None,
         }
     }
 

@@ -116,7 +116,7 @@ interface TextShape extends ShapeBase {
   type: "text";
   content: string;
   align: "left" | "center" | "right";
-  bulletMarker?: string;          // 表示専用の "• "/"- " 等のプレフィックス(§6.2.3/§6.2.4、content 自体には含めない)
+  bulletMarker?: string;          // 表示専用の "• "/"- " 等のプレフィックス(§6.2.3/§6.2.4、content 自体には含めない。SVG/PNG/EMF の書き出しでも content の前に付与する)
 }
 
 // 任意の閉多角形(ピラミッド図のピラミッド段 - §6.2.5)。points は絶対座標ではなく

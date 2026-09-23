@@ -81,6 +81,28 @@ describe("buildSvgDocument", () => {
     expect(svg).toContain("コンサル");
   });
 
+  // bulletMarker is render-only (not part of content) - the export must still
+  // show it, same as ShapeRenderer.tsx does on the canvas.
+  it("prefixes a text shape's bullet marker to its exported content", () => {
+    const doc = withShapes([
+      {
+        id: "t1",
+        type: "text",
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 30,
+        rotation: 0,
+        style: defaultShapeStyle(),
+        zIndex: 0,
+        content: "項目",
+        align: "left",
+        bulletMarker: "> ",
+      },
+    ]);
+    expect(buildSvgDocument(doc)).toContain("&gt; 項目</text>");
+  });
+
   it("resolves a connector between two shapes to a line between their anchors", () => {
     const from: Shape = {
       id: "a",

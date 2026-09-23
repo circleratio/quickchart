@@ -55,6 +55,11 @@ pub struct ShapeDto {
     pub points: Option<Vec<PointDto>>,
     #[serde(default)]
     pub corner_radius: Option<f64>,
+    // Render-only prefix ahead of a text shape's content (e.g. "• ", "> ") -
+    // see shape.ts's TextShape.bulletMarker. Not part of `content`, so it has
+    // to be prepended here for the exported text to match the canvas.
+    #[serde(default)]
+    pub bullet_marker: Option<String>,
 }
 
 pub type Rgb = (u8, u8, u8);
@@ -72,6 +77,17 @@ pub fn parse_hex_color(s: &str) -> Rgb {
     (r, g, b)
 }
 
+// A shape's fill: None for "none" (an unfilled outline - venn's set circles,
+// flowScheduleHorizontal's cards, ...), which the writer draws with a hollow
+// brush. parse_hex_color alone would turn "none" into solid black.
+pub fn parse_fill(s: &str) -> Option<Rgb> {
+    if s == "none" {
+        None
+    } else {
+        Some(parse_hex_color(s))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct BoxCommand {
     pub x: f64,
@@ -79,7 +95,7 @@ pub struct BoxCommand {
     pub width: f64,
     pub height: f64,
     pub rotation: f64,
-    pub fill: Rgb,
+    pub fill: Option<Rgb>,
     pub stroke: Rgb,
     pub stroke_width: f64,
     pub dashed: bool,
@@ -111,7 +127,7 @@ pub struct PolygonCommand {
     pub cx: f64,
     pub cy: f64,
     pub rotation: f64,
-    pub fill: Rgb,
+    pub fill: Option<Rgb>,
     pub stroke: Rgb,
     pub stroke_width: f64,
     pub dashed: bool,
@@ -188,7 +204,7 @@ fn box_command(shape: &ShapeDto) -> BoxCommand {
         width: shape.width,
         height: shape.height,
         rotation: shape.rotation,
-        fill: parse_hex_color(&shape.style.fill),
+        fill: parse_fill(&shape.style.fill),
         stroke: parse_hex_color(&shape.style.stroke),
         stroke_width: shape.style.stroke_width,
         dashed: shape.style.stroke_dasharray.is_some(),
@@ -254,7 +270,7 @@ pub fn build_draw_commands(shapes: &[ShapeDto]) -> Vec<DrawCommand> {
                         cx: shape.x + shape.width / 2.0,
                         cy: shape.y + shape.height / 2.0,
                         rotation: shape.rotation,
-                        fill: parse_hex_color(&shape.style.fill),
+                        fill: parse_fill(&shape.style.fill),
                         stroke: parse_hex_color(&shape.style.stroke),
                         stroke_width: shape.style.stroke_width,
                         dashed: shape.style.stroke_dasharray.is_some(),
@@ -267,7 +283,11 @@ pub fn build_draw_commands(shapes: &[ShapeDto]) -> Vec<DrawCommand> {
                 width: shape.width,
                 height: shape.height,
                 rotation: shape.rotation,
-                content: shape.content.clone().unwrap_or_default(),
+                content: format!(
+                    "{}{}",
+                    shape.bullet_marker.as_deref().unwrap_or(""),
+                    shape.content.as_deref().unwrap_or("")
+                ),
                 font_family: shape.style.font_family.clone().unwrap_or_else(|| "Yu Gothic".to_string()),
                 font_size: shape.style.font_size.unwrap_or(16.0),
                 color: parse_hex_color(shape.style.text_color.as_deref().unwrap_or("#000000")),
@@ -314,6 +334,7 @@ mod tests {
             to_anchor: None,
             points: None,
             corner_radius: None,
+            bullet_marker: None,
         }
     }
 
@@ -337,10 +358,43 @@ mod tests {
         match &commands[0] {
             DrawCommand::Rect(b) => {
                 assert_eq!((b.x, b.y, b.width, b.height), (10.0, 20.0, 100.0, 50.0));
-                assert_eq!(b.fill, (0xee, 0xf2, 0xf7));
+                assert_eq!(b.fill, Some((0xee, 0xf2, 0xf7)));
                 assert_eq!(b.stroke, (0x1f, 0x3a, 0x5f));
             }
             other => panic!("expected Rect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn treats_a_none_fill_as_unfilled_instead_of_black() {
+        let mut shape = base_shape("a", "rect", 0.0, 0.0, 10.0, 10.0);
+        shape.style = style("none", "#1f3a5f");
+        let mut polygon = base_shape("p", "polygon", 0.0, 0.0, 10.0, 10.0);
+        polygon.style = style("none", "#1f3a5f");
+        polygon.points = Some(vec![
+            PointDto { x: 0.0, y: 0.0 },
+            PointDto { x: 1.0, y: 1.0 },
+            PointDto { x: 0.0, y: 1.0 },
+        ]);
+        let commands = build_draw_commands(&[shape, polygon]);
+        match &commands[0] {
+            DrawCommand::Rect(b) => assert_eq!(b.fill, None),
+            other => panic!("expected Rect, got {other:?}"),
+        }
+        match &commands[1] {
+            DrawCommand::Polygon(p) => assert_eq!(p.fill, None),
+            other => panic!("expected Polygon, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn prefixes_a_text_shapes_bullet_marker_to_its_content() {
+        let mut shape = base_shape("t", "text", 0.0, 0.0, 100.0, 30.0);
+        shape.content = Some("項目".to_string());
+        shape.bullet_marker = Some("• ".to_string());
+        match &build_draw_commands(&[shape])[0] {
+            DrawCommand::Text(t) => assert_eq!(t.content, "• 項目"),
+            other => panic!("expected Text, got {other:?}"),
         }
     }
 

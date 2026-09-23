@@ -2,7 +2,7 @@ use super::shape_draw::{BoxCommand, DrawCommand, LineCommand, PolygonCommand, Rg
 use crate::error::AppError;
 use windows::Win32::Foundation::COLORREF;
 use windows::Win32::Graphics::Gdi::{
-    CLIP_DEFAULT_PRECIS, CreateEnhMetaFileW, CreateFontW, CreatePen, CreateSolidBrush, DEFAULT_CHARSET,
+    CLIP_DEFAULT_PRECIS, CreateEnhMetaFileW, CreateFontW, CreatePen, CreateSolidBrush, DEFAULT_CHARSET, GetStockObject, HGDIOBJ, NULL_BRUSH,
     DEFAULT_PITCH, DEFAULT_QUALITY, DeleteObject, Ellipse, FF_DONTCARE, FW_NORMAL, GM_ADVANCED, GetDC,
     ModifyWorldTransform, MWT_IDENTITY, OUT_DEFAULT_PRECIS, PS_DASH, PS_SOLID, Rectangle, ReleaseDC, RoundRect, SelectObject,
     SetBkMode, SetGraphicsMode, SetTextAlign, SetTextColor, SetWorldTransform, TA_CENTER, TA_LEFT, TA_RIGHT,
@@ -77,9 +77,19 @@ unsafe fn with_rotation<F: FnOnce()>(hdc: windows::Win32::Graphics::Gdi::HDC, cx
     let _ = ModifyWorldTransform(hdc, None, MWT_IDENTITY);
 }
 
+// A solid brush for a filled shape, or the stock hollow brush for an unfilled
+// one (fill "none" - see shape_draw.rs's parse_fill). Deleting a stock object
+// afterwards is a harmless no-op, so callers clean up both cases the same way.
+unsafe fn fill_brush(fill: Option<Rgb>) -> HGDIOBJ {
+    match fill {
+        Some(color) => CreateSolidBrush(colorref(color)).into(),
+        None => GetStockObject(NULL_BRUSH),
+    }
+}
+
 unsafe fn draw_box(hdc: windows::Win32::Graphics::Gdi::HDC, b: &BoxCommand, ellipse: bool) {
-    let brush = CreateSolidBrush(colorref(b.fill));
-    let old_brush = SelectObject(hdc, brush.into());
+    let brush = fill_brush(b.fill);
+    let old_brush = SelectObject(hdc, brush);
     let pen_style = if b.dashed { PS_DASH } else { PS_SOLID };
     let pen = CreatePen(pen_style, b.stroke_width.max(1.0) as i32, colorref(b.stroke));
     let old_pen = SelectObject(hdc, pen.into());
@@ -101,13 +111,13 @@ unsafe fn draw_box(hdc: windows::Win32::Graphics::Gdi::HDC, b: &BoxCommand, elli
 
     SelectObject(hdc, old_brush);
     SelectObject(hdc, old_pen);
-    let _ = DeleteObject(brush.into());
+    let _ = DeleteObject(brush);
     let _ = DeleteObject(pen.into());
 }
 
 unsafe fn draw_polygon(hdc: windows::Win32::Graphics::Gdi::HDC, p: &PolygonCommand) {
-    let brush = CreateSolidBrush(colorref(p.fill));
-    let old_brush = SelectObject(hdc, brush.into());
+    let brush = fill_brush(p.fill);
+    let old_brush = SelectObject(hdc, brush);
     let pen_style = if p.dashed { PS_DASH } else { PS_SOLID };
     let pen = CreatePen(pen_style, p.stroke_width.max(1.0) as i32, colorref(p.stroke));
     let old_pen = SelectObject(hdc, pen.into());
@@ -123,7 +133,7 @@ unsafe fn draw_polygon(hdc: windows::Win32::Graphics::Gdi::HDC, p: &PolygonComma
 
     SelectObject(hdc, old_brush);
     SelectObject(hdc, old_pen);
-    let _ = DeleteObject(brush.into());
+    let _ = DeleteObject(brush);
     let _ = DeleteObject(pen.into());
 }
 

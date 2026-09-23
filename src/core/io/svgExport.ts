@@ -55,7 +55,7 @@ function renderShape(shape: Shape, shapes: Record<ShapeId, Shape>): string {
     case "text": {
       const x = textAnchorX(shape);
       const y = shape.y + shape.height / 2;
-      return `<text x="${x}" y="${y}" text-anchor="${textAnchorFor(shape.align)}" dominant-baseline="middle" font-family="${escapeXml(shape.style.fontFamily ?? "sans-serif")}" font-size="${shape.style.fontSize ?? 16}" fill="${shape.style.textColor ?? "#000000"}"${rotationAttr(shape)}>${escapeXml(shape.content)}</text>`;
+      return `<text x="${x}" y="${y}" text-anchor="${textAnchorFor(shape.align)}" dominant-baseline="middle" font-family="${escapeXml(shape.style.fontFamily ?? "sans-serif")}" font-size="${shape.style.fontSize ?? 16}" fill="${shape.style.textColor ?? "#000000"}"${rotationAttr(shape)}>${escapeXml((shape.bulletMarker ?? "") + shape.content)}</text>`;
     }
     case "connector":
     case "arrow": {
