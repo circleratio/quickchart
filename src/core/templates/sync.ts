@@ -11,6 +11,7 @@ import {
   labelStyle,
   outlineStyle,
   resolveColorSlot,
+  neutralPanelStyle,
   ruleStyle,
   separatorStyle,
   timelineTrackStyle,
@@ -32,6 +33,7 @@ import { layoutHorizontalFlow } from "./horizontalFlow";
 import { layoutFlowSchedule } from "./flowSchedule";
 import { layoutFlowScheduleHorizontal } from "./flowScheduleHorizontal";
 import { layoutTimeline } from "./timeline";
+import { layoutBeforeAfter } from "./beforeAfter";
 import type { LayoutNode } from "./treeLayout";
 
 // All functions here take a plain Document and return a new plain Document -
@@ -56,7 +58,8 @@ function isFullyRelayoutedPattern(pattern: StructuredBlock["pattern"]): boolean 
     pattern === "horizontalFlow" ||
     pattern === "flowSchedule" ||
     pattern === "flowScheduleHorizontal" ||
-    pattern === "timeline"
+    pattern === "timeline" ||
+    pattern === "beforeAfter"
   );
 }
 
@@ -172,6 +175,8 @@ function rawLayoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[
       return layoutFlowScheduleHorizontal(outline, flowScheduleHorizontalTitle(params));
     case "timeline":
       return layoutTimeline(outline, timelineTitle(params));
+    case "beforeAfter":
+      return layoutBeforeAfter(outline);
     default:
       return [];
   }
@@ -204,7 +209,9 @@ function styleFor(themeId: string, layoutNode: LayoutNode): ShapeStyle {
     layoutNode.kind === "ellipse" || layoutNode.kind === "rect"
       ? layoutNode.fillColorSlot !== undefined
         ? filledShapeStyle(themeId, layoutNode.fillColorSlot)
-        : outlineStyle(themeId, layoutNode.dashed === true)
+        : layoutNode.neutralFill
+          ? neutralPanelStyle()
+          : outlineStyle(themeId, layoutNode.dashed === true)
       : layoutNode.kind === "line"
         ? layoutNode.trackStyle
           ? timelineTrackStyle()
@@ -558,6 +565,24 @@ function emptyTimelineEvent(): OutlineNode {
   return { id: uuidv4(), text: "", children: [{ id: uuidv4(), text: "", children: [] }] };
 }
 
+// A beforeAfter topic (root outline node) needs both its ASIS and TOBE
+// blocks (child[0]/child[1], see beforeAfter.ts) up front for the same
+// reason emptyPyramidChartRow above does - without them, a freshly-added
+// topic would have no ASIS/TOBE-shaped slots for the generic outline editor
+// to fill in. The topic's own text (unlike bulletMatrix's/pyramidChart's
+// root text) IS used directly - it's the badge (beforeAfter.ts) - so, unlike
+// those two, no further per-child prefill is needed here.
+function emptyBeforeAfterTopic(): OutlineNode {
+  return {
+    id: uuidv4(),
+    text: "",
+    children: [
+      { id: uuidv4(), text: "", children: [] },
+      { id: uuidv4(), text: "", children: [] },
+    ],
+  };
+}
+
 // A schedule bar's 2 children are position-based like pyramidChart's
 // scale/cells (doc/spec.md §6.2.6): child[0]=start date, child[1]=end date,
 // both "YYYY-MM-DD" strings entered via dedicated date inputs rather than
@@ -587,6 +612,7 @@ function newRootNode(block: StructuredBlock): OutlineNode {
   if (block.pattern === "schedule") return emptyScheduleRow();
   if (block.pattern === "verticalFlow") return emptyVerticalFlowStep();
   if (block.pattern === "timeline") return emptyTimelineEvent();
+  if (block.pattern === "beforeAfter") return emptyBeforeAfterTopic();
   return { id: uuidv4(), text: "", children: [] };
 }
 
@@ -1051,7 +1077,8 @@ function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline:
     block.pattern === "horizontalFlow" ||
     block.pattern === "flowSchedule" ||
     block.pattern === "flowScheduleHorizontal" ||
-    block.pattern === "timeline"
+    block.pattern === "timeline" ||
+    block.pattern === "beforeAfter"
       ? // flowScheduleHorizontal shares flowSchedule's exact reasoning
         // (untracked title/connector shapes, plus an index-derived number
         // that relayoutBlock would never touch) - see flowSchedule's own
@@ -1071,6 +1098,15 @@ function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline:
         // avoids that; it also keeps the single shared track line's span
         // correct without needing its own reasoning, since regenerating from
         // scratch is already how add/delete keeps it correct.
+        //
+        // beforeAfter shares flowSchedule's/flowScheduleHorizontal's "both
+        // reasons" case: its per-column down-arrow (beforeAfter.ts) is an
+        // untracked shape whose X position depends on its column's INDEX,
+        // which relayoutBlock (skipping every shape with no templateNodeIds)
+        // would never update after a reorder - AND, like timeline, indenting
+        // a root topic under another moves it out of layoutBeforeAfter's
+        // top-level `outline` loop, which only a full regenerate cleans up
+        // (see timeline's own comment above).
         regenerateBlockShapes(doc, block, newOutline)
       : relayoutBlock(doc, block, newOutline);
   return regenerateTreeConnectors(next, block.id);

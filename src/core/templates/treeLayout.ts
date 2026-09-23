@@ -66,6 +66,13 @@ export interface LayoutNode {
   // unfilled outline - undefined keeps it unfilled (horizontalFlow's first,
   // "casual/optional" step circle - see horizontalFlow.ts).
   fillColorSlot?: ThemeColorSlot;
+  // For an "ellipse"/"rect" kind with no `fillColorSlot`: fills with
+  // `style.ts`'s `neutralPanelStyle` (a fixed, theme-independent light gray)
+  // instead of leaving it unfilled - beforeAfter's "ASIS" cell background
+  // (doc/spec.md §6.2.12), which is deliberately NOT theme-colored (see
+  // neutralPanelStyle's own doc comment). Ignored when `fillColorSlot` is
+  // set. Undefined/false behaves as the normal unfilled outline.
+  neutralFill?: boolean;
   // Set on a "label" kind to render this literal prefix (e.g. "• ", "- ")
   // ahead of the text without it being part of the shape's editable content
   // (see shape.ts's TextShape.bulletMarker for why).

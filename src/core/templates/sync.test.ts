@@ -845,6 +845,79 @@ describe("timeline blocks (fully-relayouted pattern)", () => {
   });
 });
 
+describe("beforeAfter blocks (fully-relayouted pattern)", () => {
+  function beforeAfterBlock(doc: Document) {
+    const { document, blockId } = sync.addEmptyStructuredBlock(doc, "beforeAfter");
+    return { document: sync.addFirstOutlineNode(document, blockId), blockId };
+  }
+
+  it("fills a newly-added topic with both an ASIS and a TOBE slot", () => {
+    const { document, blockId } = beforeAfterBlock(createEmptyDocument());
+    const block = document.structuredBlocks.find((b) => b.id === blockId)!;
+    expect(block.outline[0].children).toHaveLength(2);
+  });
+
+  it("generates ASIS/TOBE cell shapes for the topic, plus the fixed AS-IS/TO-BE sidebar", () => {
+    const { document } = beforeAfterBlock(createEmptyDocument());
+    const asisId = document.structuredBlocks[0].outline[0].children[0].id;
+    const tobeId = document.structuredBlocks[0].outline[0].children[1].id;
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    expect(shapes.some((s) => s.templateNodeIds?.includes(asisId))).toBe(true);
+    expect(shapes.some((s) => s.templateNodeIds?.includes(tobeId))).toBe(true);
+    expect(shapes.some((s) => s.type === "text" && s.content === "AS-IS")).toBe(true);
+    expect(shapes.some((s) => s.type === "text" && s.content === "TO-BE")).toBe(true);
+  });
+
+  it("editing an ASIS headline's text patches its shape's content in place without moving any shape", () => {
+    const { document, blockId } = beforeAfterBlock(createEmptyDocument());
+    const asisId = document.structuredBlocks[0].outline[0].children[0].id;
+
+    const before = document.structuredBlocks[0].generatedShapeIds.map((id) => ({ ...document.shapes[id] }));
+    const after = sync.updateOutlineNodeText(document, blockId, asisId, "工期遅延等による計画変更");
+    const afterShapes = after.structuredBlocks[0].generatedShapeIds.map((id) => after.shapes[id]);
+
+    expect(afterShapes.map((s) => ({ x: s.x, y: s.y }))).toEqual(before.map((s) => ({ x: s.x, y: s.y })));
+    const label = afterShapes.find((s) => s.type === "text" && s.templateNodeIds?.includes(asisId) && s.style.fontWeight === "bold");
+    expect(label?.type === "text" && label.content).toBe("工期遅延等による計画変更");
+  });
+
+  it("editing the topic's own text patches the badge shape's content, independent of the ASIS headline", () => {
+    const { document, blockId } = beforeAfterBlock(createEmptyDocument());
+    const topicId = nodeId(document, blockId, 0);
+
+    const after = sync.updateOutlineNodeText(document, blockId, topicId, "現場の悩み");
+    const shapes = after.structuredBlocks[0].generatedShapeIds.map((id) => after.shapes[id]);
+    const badge = shapes.find((s) => s.templateNodeIds?.includes(topicId));
+    expect(badge?.type === "text" && badge.content).toBe("現場の悩み");
+  });
+
+  it("reordering topics (move up/down) regenerates the per-column arrow positions instead of leaving them stale", () => {
+    let { document, blockId } = beforeAfterBlock(createEmptyDocument());
+    const firstId = nodeId(document, blockId, 0);
+    document = sync.addOutlineSibling(document, blockId, firstId);
+    const secondId = document.structuredBlocks[0].outline[1].id;
+
+    document = sync.moveOutlineNode(document, blockId, secondId, "up");
+
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    const asisId = document.structuredBlocks[0].outline[0].children[0].id; // now the moved-up topic
+    const movedAsisCell = shapes.find((s) => s.type === "rect" && s.templateNodeIds?.includes(asisId))!;
+    expect(movedAsisCell.x).toBeLessThan(140 + 24 + 340); // sits in the first column, left of the second
+  });
+
+  it("indenting a root topic under another removes its now-orphaned shapes instead of leaving them stale", () => {
+    let { document, blockId } = beforeAfterBlock(createEmptyDocument());
+    const firstId = nodeId(document, blockId, 0);
+    document = sync.addOutlineSibling(document, blockId, firstId);
+    const secondId = document.structuredBlocks[0].outline[1].id;
+
+    document = sync.indentOutlineNode(document, blockId, secondId);
+
+    const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
+    expect(shapes.some((s) => s.templateNodeIds?.includes(secondId))).toBe(false);
+  });
+});
+
 describe("schedule blocks (fully-relayouted pattern)", () => {
   function scheduleBlock(doc: Document) {
     const { document, blockId } = sync.addEmptyStructuredBlock(doc, "schedule");

@@ -211,3 +211,16 @@ export function treeConnectorStyle(): ShapeStyle {
 export function timelineTrackStyle(): ShapeStyle {
   return { fill: "none", stroke: "#c7c7c7", strokeWidth: 6 };
 }
+
+// A fixed, theme-independent light gray panel fill - ビフォーアフター（縦）'s
+// "ASIS" (before/problem) cell background (templates/beforeAfter.ts, doc/
+// spec.md §6.2.12). Deliberately NOT a theme color, unlike its "TOBE"
+// (after/future) counterpart, which uses the theme's own palest shade
+// (filledShapeStyle with a light fillColorSlot): the reference image reads
+// the neutral "before" state as plain/unbranded and the "after" state as the
+// one that gets the brand's color, so baking a theme color into the ASIS
+// panel would undercut that contrast regardless of which color theme is
+// active.
+export function neutralPanelStyle(): ShapeStyle {
+  return { fill: "#f2f2f2", stroke: "#f2f2f2", strokeWidth: 2 };
+}

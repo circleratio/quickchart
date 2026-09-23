@@ -24,6 +24,7 @@ const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
   flowSchedule: "フロースケジュール（縦）",
   flowScheduleHorizontal: "フロースケジュール（横）",
   timeline: "タイムライン",
+  beforeAfter: "ビフォーアフター（縦）",
 };
 
 const BULLET_MATRIX_IMPORT_PLACEHOLDER =
@@ -685,17 +686,26 @@ function OutlineRow({
   // position-locked the same way as verticalFlow's badge above - an event has
   // exactly this one child, no sibling description lines to keep reorderable.
   const isTimelineTimeLabel = pattern === "timeline" && depth === 1 && index === 0;
-  const isFixedPositionChild = isBulletMatrixCell || isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel;
+  // beforeAfter's depth-1 ASIS/TOBE blocks (child[0]/child[1], see
+  // beforeAfter.ts) are position-locked at BOTH positions (unlike
+  // verticalFlow's/timeline's single locked child[0]) - a topic always has
+  // exactly these two. Unlike a bulletMatrix cell, each one IS a leaf value
+  // with its own text (the headline), so it keeps a real input; unlike
+  // pyramidChart's depth-1 values, "+子" stays enabled (see below) since a
+  // block's description/extra-line children are real, freely-editable
+  // content, not a leaf.
+  const isBeforeAfterBlock = pattern === "beforeAfter" && depth === 1;
+  const isFixedPositionChild = isBulletMatrixCell || isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock;
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Tab") {
       e.preventDefault();
-      if (isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel) return;
+      if (isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock) return;
       if (e.shiftKey) outdentOutlineNode(blockId, node.id);
       else indentOutlineNode(blockId, node.id);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (disableAddSibling || isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel) return;
+      if (disableAddSibling || isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock) return;
       addOutlineSibling(blockId, node.id);
       const block = useDocumentStore.getState().document.structuredBlocks.find((b) => b.id === blockId);
       const newNodeId = block ? findNextSiblingId(block.outline, node.id) : null;
@@ -712,7 +722,19 @@ function OutlineRow({
           <input
             ref={inputRef}
             value={node.text}
-            placeholder={isVerticalFlowBadge ? "バッジ(例: STEP 0)" : isTimelineTimeLabel ? "時刻(例: 9:00)" : "項目を入力"}
+            placeholder={
+              isVerticalFlowBadge
+                ? "バッジ(例: STEP 0)"
+                : isTimelineTimeLabel
+                  ? "時刻(例: 9:00)"
+                  : isBeforeAfterBlock
+                    ? index === 0
+                      ? "AS-IS(見出し)"
+                      : "TO-BE(見出し)"
+                    : pattern === "beforeAfter" && depth === 0
+                      ? "バッジ(例: 現場の悩み)"
+                      : "項目を入力"
+            }
             onChange={(e) => updateOutlineNodeText(blockId, node.id, e.target.value)}
             onKeyDown={handleKeyDown}
           />
