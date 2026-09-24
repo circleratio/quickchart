@@ -1,6 +1,7 @@
 import type { OutlineNode } from "../model/document";
 import type { Point } from "../model/shape";
-import type { LayoutNode } from "./treeLayout";
+import { fixedText, shapeNode, textNode } from "./layoutNode";
+import type { LayoutNode } from "./layoutNode";
 
 const COLUMN_WIDTH = 260;
 const COLUMN_GAP = 28;
@@ -115,10 +116,7 @@ export function layoutChevronFlow(outline: OutlineNode[]): LayoutNode[] {
 
     // Outlines first, so they render underneath the labels drawn on top of
     // them (see regenerateBlockShapes in sync.ts).
-    result.push({
-      nodeIds: [step.id],
-      text: "",
-      depth: 0,
+    result.push(shapeNode(step, {
       x,
       y: CHEVRON_Y,
       width: CHEVRON_WIDTH,
@@ -126,11 +124,8 @@ export function layoutChevronFlow(outline: OutlineNode[]): LayoutNode[] {
       kind: "polygon",
       points: chevronPoints(),
       strokeColorSlot: 1,
-    });
-    result.push({
-      nodeIds: [step.id],
-      text: "",
-      depth: 0,
+    }));
+    result.push(shapeNode(step, {
       x,
       y: BODY_Y,
       width: COLUMN_WIDTH,
@@ -138,16 +133,13 @@ export function layoutChevronFlow(outline: OutlineNode[]): LayoutNode[] {
       kind: "polygon",
       points: BODY_POINTS,
       strokeColorSlot: 3,
-    });
+    }));
 
     // "Step" + number are purely position-derived (like
     // flowScheduleHorizontal's "01"), not tied to any outline node -
     // untracked, always regenerated with the rest of the block on reorder
     // (isFullyRelayoutedPattern/relayoutOrRegenerate in sync.ts).
-    result.push({
-      nodeIds: [],
-      text: "Step",
-      depth: 0,
+    result.push(fixedText("Step", {
       x,
       y: STEP_WORD_Y,
       width: STEP_WORD_WIDTH,
@@ -156,11 +148,8 @@ export function layoutChevronFlow(outline: OutlineNode[]): LayoutNode[] {
       align: "left",
       fontSize: STEP_WORD_FONT_SIZE,
       textColorSlot: 1,
-    });
-    result.push({
-      nodeIds: [],
-      text: String(i + 1),
-      depth: 0,
+    }));
+    result.push(fixedText(String(i + 1), {
       x: x + STEP_NUMBER_X,
       y: 0,
       width: STEP_NUMBER_WIDTH,
@@ -169,12 +158,9 @@ export function layoutChevronFlow(outline: OutlineNode[]): LayoutNode[] {
       align: "left",
       fontSize: STEP_NUMBER_FONT_SIZE,
       textColorSlot: 1,
-    });
+    }));
 
-    result.push({
-      nodeIds: [step.id],
-      text: step.text,
-      depth: 0,
+    result.push(textNode(step, 0, {
       x: x + TITLE_PADDING_X,
       y: CHEVRON_Y,
       width: CHEVRON_WIDTH - CHEVRON_TIP - TITLE_PADDING_X * 2,
@@ -182,15 +168,12 @@ export function layoutChevronFlow(outline: OutlineNode[]): LayoutNode[] {
       kind: "label",
       align: "left",
       fontSize: TITLE_FONT_SIZE,
-    });
+    }));
 
     let cy = BODY_Y + BODY_PADDING_TOP;
     bullets.forEach((bullet, j) => {
       if (j > 0) cy += BULLET_GAP;
-      result.push({
-        nodeIds: [bullet.id],
-        text: bullet.text,
-        depth: 1,
+      result.push(textNode(bullet, 1, {
         x: x + BODY_PADDING_X,
         y: cy,
         width: COLUMN_WIDTH - BODY_PADDING_X * 2,
@@ -199,13 +182,10 @@ export function layoutChevronFlow(outline: OutlineNode[]): LayoutNode[] {
         align: "left",
         fontSize: BULLET_FONT_SIZE,
         bulletMarker: BULLET_MARKER,
-      });
+      }));
       cy += BULLET_LINE_HEIGHT;
       bullet.children.forEach((line) => {
-        result.push({
-          nodeIds: [line.id],
-          text: line.text,
-          depth: 2,
+        result.push(textNode(line, 2, {
           x: x + BODY_PADDING_X + CONTINUATION_INDENT,
           y: cy,
           width: COLUMN_WIDTH - BODY_PADDING_X * 2 - CONTINUATION_INDENT,
@@ -213,7 +193,7 @@ export function layoutChevronFlow(outline: OutlineNode[]): LayoutNode[] {
           kind: "label",
           align: "left",
           fontSize: BULLET_FONT_SIZE,
-        });
+        }));
         cy += BULLET_LINE_HEIGHT;
       });
     });
@@ -222,10 +202,7 @@ export function layoutChevronFlow(outline: OutlineNode[]): LayoutNode[] {
     // updates an existing shape through the normal text-only sync path
     // instead of needing a regenerate to make it appear.
     if (duration) {
-      result.push({
-        nodeIds: [duration.id],
-        text: duration.text,
-        depth: 1,
+      result.push(textNode(duration, 1, {
         x,
         y: BODY_Y + bodyHeight - BODY_PADDING_BOTTOM - DURATION_HEIGHT,
         width: COLUMN_WIDTH,
@@ -233,7 +210,7 @@ export function layoutChevronFlow(outline: OutlineNode[]): LayoutNode[] {
         kind: "label",
         align: "center",
         fontSize: DURATION_FONT_SIZE,
-      });
+      }));
     }
   });
 

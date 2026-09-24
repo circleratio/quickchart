@@ -39,7 +39,7 @@ import { layoutBeforeAfterHorizontal } from "./beforeAfterHorizontal";
 import { layoutChevronFlow } from "./chevronFlow";
 import { layoutCycle } from "./cycle";
 import { layoutGridMatrix } from "./gridMatrix";
-import type { LayoutNode } from "./treeLayout";
+import type { LayoutNode } from "./layoutNode";
 
 // All functions here take a plain Document and return a new plain Document -
 // no Immer/store dependency, so they're directly unit-testable. documentStore
@@ -249,7 +249,7 @@ function normalizeToOrigin(nodes: LayoutNode[]): LayoutNode[] {
 // with fontWeight/italic/underline/textColorSlot layered on top where set -
 // decorations a kind's own style function doesn't hardcode, so a pattern can
 // reuse a kind (e.g. "label") with a different look per LayoutNode instead of
-// every decoration combination needing its own kind (see treeLayout.ts).
+// every decoration combination needing its own kind (see layoutNode.ts).
 function styleFor(themeId: string, layoutNode: LayoutNode): ShapeStyle {
   const theme = getColorTheme(themeId);
   const base: ShapeStyle =

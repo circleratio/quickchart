@@ -1,5 +1,6 @@
 import type { OutlineNode } from "../model/document";
-import type { LayoutNode } from "./treeLayout";
+import { decoration, fixedText, textNode } from "./layoutNode";
+import type { LayoutNode } from "./layoutNode";
 
 const HEADING_WIDTH = 220;
 const CONTENT_WIDTH = 680;
@@ -24,7 +25,7 @@ const TITLE_FONT_SIZE = 22;
 const TITLE_LINE_GAP = 16;
 
 // The "01" etc. row number: rendered as a `bulletMarker` prefix on the row's
-// own heading shape (treeLayout.ts's LayoutNode.bulletMarker), not baked into
+// own heading shape (layoutNode.ts's LayoutNode.bulletMarker), not baked into
 // the shape's editable `content` - same mechanism headingBullets/bulletMatrix
 // use for their "• "/"- " prefixes. This keeps the heading's real content
 // exactly `row.text` (so a plain text edit patches it the normal way, no
@@ -56,10 +57,7 @@ export function layoutFlowSchedule(outline: OutlineNode[], title: string): Layou
   if (trimmedTitle) {
     const bandWidth = Math.min(TITLE_BAND_WIDTH, TOTAL_WIDTH);
     const bandX = (TOTAL_WIDTH - bandWidth) / 2;
-    result.push({
-      nodeIds: [],
-      text: trimmedTitle,
-      depth: 0,
+    result.push(fixedText(trimmedTitle, {
       x: bandX,
       y: 0,
       width: bandWidth,
@@ -74,7 +72,7 @@ export function layoutFlowSchedule(outline: OutlineNode[], title: string): Layou
       // callout color. (An earlier version of this file used `"accent"`,
       // which resolves to an orange in the default "Neutral Blue" theme -
       // wrong on inspection, fixed here.)
-    });
+    }));
 
     // Dashed rules filling the rest of the title row on either side of the
     // text band, same "line" kind/default dash as the row separators below -
@@ -83,17 +81,14 @@ export function layoutFlowSchedule(outline: OutlineNode[], title: string): Layou
     const lineY = TITLE_HEIGHT / 2;
     const leftWidth = bandX - TITLE_LINE_GAP;
     if (leftWidth > 0) {
-      result.push({ nodeIds: [], text: "", depth: 0, x: 0, y: lineY, width: leftWidth, height: 0, kind: "line" });
-      result.push({
-        nodeIds: [],
-        text: "",
-        depth: 0,
+      result.push(decoration({ x: 0, y: lineY, width: leftWidth, height: 0, kind: "line" }));
+      result.push(decoration({
         x: bandX + bandWidth + TITLE_LINE_GAP,
         y: lineY,
         width: TOTAL_WIDTH - (bandX + bandWidth + TITLE_LINE_GAP),
         height: 0,
         kind: "line",
-      });
+      }));
     }
 
     y = TITLE_HEIGHT + TITLE_GAP;
@@ -104,10 +99,7 @@ export function layoutFlowSchedule(outline: OutlineNode[], title: string): Layou
     const contentHeight = descCount * DESC_LINE_HEIGHT;
     const rowHeight = Math.max(ROW_MIN_HEIGHT, contentHeight + ROW_PADDING_Y * 2);
 
-    result.push({
-      nodeIds: [row.id],
-      text: row.text,
-      depth: 0,
+    result.push(textNode(row, 0, {
       x: 0,
       y,
       width: HEADING_WIDTH,
@@ -115,14 +107,11 @@ export function layoutFlowSchedule(outline: OutlineNode[], title: string): Layou
       kind: "heading",
       fontSize: HEADING_FONT_SIZE,
       bulletMarker: rowNumberPrefix(i),
-    });
+    }));
 
     const descStartY = y + (rowHeight - contentHeight) / 2;
     row.children.forEach((desc, j) => {
-      result.push({
-        nodeIds: [desc.id],
-        text: desc.text,
-        depth: 1,
+      result.push(textNode(desc, 1, {
         x: HEADING_WIDTH + CONTENT_PADDING_X,
         y: descStartY + j * DESC_LINE_HEIGHT,
         width: CONTENT_WIDTH - CONTENT_PADDING_X - CONTENT_RIGHT_PADDING,
@@ -130,7 +119,7 @@ export function layoutFlowSchedule(outline: OutlineNode[], title: string): Layou
         kind: "label",
         align: "left",
         fontSize: DESC_FONT_SIZE,
-      });
+      }));
     });
 
     y += rowHeight;
@@ -140,16 +129,13 @@ export function layoutFlowSchedule(outline: OutlineNode[], title: string): Layou
     // headingBullets' separator (the heading column is one continuous band of
     // identical color across every row, so a seam there wouldn't show).
     if (i < outline.length - 1) {
-      result.push({
-        nodeIds: [],
-        text: "",
-        depth: 0,
+      result.push(decoration({
         x: HEADING_WIDTH,
         y,
         width: CONTENT_WIDTH,
         height: 0,
         kind: "line",
-      });
+      }));
     }
   });
 

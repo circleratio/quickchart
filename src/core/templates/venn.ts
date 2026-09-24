@@ -1,5 +1,6 @@
 import type { OutlineNode } from "../model/document";
-import type { LayoutNode } from "./treeLayout";
+import { shapeNode, textNode } from "./layoutNode";
+import type { LayoutNode } from "./layoutNode";
 
 const CIRCLE_RADIUS_2 = 140;
 const CIRCLE_RADIUS_3 = 130;
@@ -99,16 +100,13 @@ export function layoutVenn(outline: OutlineNode[], setCount: number): LayoutNode
   // render underneath them (see regenerateBlockShapes in sync.ts).
   sets.forEach((set, i) => {
     const c = circles[i];
-    result.push({
-      nodeIds: [set.id],
-      text: "",
-      depth: 0,
+    result.push(shapeNode(set, {
       x: c.cx - c.r,
       y: c.cy - c.r,
       width: c.r * 2,
       height: c.r * 2,
       kind: "ellipse",
-    });
+    }));
   });
 
   // A set label sits on the line from the diagram's overall center through
@@ -124,17 +122,14 @@ export function layoutVenn(outline: OutlineNode[], setCount: number): LayoutNode
     const dir = outwardDirection(circles, i);
     const labelCenterX = c.cx + dir.x * c.r * LABEL_INSET_FRACTION;
     const labelCenterY = c.cy + dir.y * c.r * LABEL_INSET_FRACTION;
-    result.push({
-      nodeIds: [set.id],
-      text: set.text,
-      depth: 0,
+    result.push(textNode(set, 0, {
       x: labelCenterX - LABEL_WIDTH / 2,
       y: labelCenterY - LABEL_HEIGHT / 2,
       width: LABEL_WIDTH,
       height: LABEL_HEIGHT,
       kind: "label",
       fontSize: LABEL_FONT_SIZE,
-    });
+    }));
   });
 
   // Group elements by exact text match (doc/spec.md §6.2.2's rule for which

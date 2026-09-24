@@ -58,7 +58,7 @@ export function getColorTheme(id: string): ColorTheme {
 
 // Index into a ColorTheme's `primary` shade scale (0 = darkest), or the
 // theme's single `accent` color - lets a LayoutNode pick a theme color by
-// reference (see treeLayout.ts's fillColorSlot/textColorSlot) instead of a
+// reference (see layoutNode.ts's fillColorSlot/textColorSlot) instead of a
 // pattern embedding a literal hex, which would break theme switching.
 export type ThemeColorSlot = 0 | 1 | 2 | 3 | 4 | "accent";
 
@@ -81,7 +81,7 @@ function relativeLuminance(hex: string): number {
 // directly on top of a shape whose own fill varies (pyramidChart's item-
 // name/scale labels over their pyramid band, which goes from a dark shade at
 // the apex to a light one at the base - see pyramidChart.ts's bandColorSlot
-// and treeLayout.ts's contrastBgColorSlot). Unlike headingStyle's
+// and layoutNode.ts's contrastBgColorSlot). Unlike headingStyle's
 // unconditional `textColor: theme.textLight` (safe there because every
 // current heading fill is one of the theme's darker shades), this checks the
 // actual color so it stays correct as the background darkness varies.

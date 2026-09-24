@@ -1,7 +1,8 @@
 import type { OutlineNode } from "../model/document";
 import type { Point } from "../model/shape";
 import type { ThemeColorSlot } from "../model/style";
-import type { LayoutNode } from "./treeLayout";
+import { decoration, fixedText, shapeNode, textNode } from "./layoutNode";
+import type { LayoutNode } from "./layoutNode";
 
 export const MATRIX_MAX_ROOTS = 4;
 
@@ -104,10 +105,7 @@ function polygonNode(abs: Point[]): LayoutNode {
   const maxY = Math.max(...abs.map((p) => p.y));
   const width = maxX - minX;
   const height = maxY - minY;
-  return {
-    nodeIds: [],
-    text: "",
-    depth: 0,
+  return decoration({
     x: minX,
     y: minY,
     width,
@@ -115,7 +113,7 @@ function polygonNode(abs: Point[]): LayoutNode {
     kind: "polygon",
     points: abs.map((p) => ({ x: (p.x - minX) / width, y: (p.y - minY) / height })),
     fillColorSlot: 0,
-  };
+  });
 }
 
 // "４象限マトリクス" (doc/spec.md §6.2.1): four outlined quadrants split by a cross
@@ -151,29 +149,23 @@ export function layoutMatrix(outline: OutlineNode[], params: MatrixParams = {}):
     const y = Math.floor(i / 2) * (quadrantHeight + QUADRANT_GAP);
     const isBottomRow = i >= 2;
 
-    shapes.push({
-      nodeIds: [quadrant.id],
-      text: "",
-      depth: 0,
+    shapes.push(shapeNode(quadrant, {
       x,
       y,
       width: QUADRANT_WIDTH,
       height: quadrantHeight,
       kind: "rect",
       strokeColorSlot: 2,
-    });
+    }));
 
     const badgeY = isBottomRow ? y + quadrantHeight - BADGE_INSET - BADGE_HEIGHT : y + BADGE_INSET;
     const fill = BADGE_FILLS[i];
-    const badge = {
-      nodeIds: [quadrant.id],
-      text: "",
-      depth: 0,
+    const badge = shapeNode(quadrant, {
       x: x + BADGE_INSET,
       y: badgeY,
       width: QUADRANT_WIDTH - BADGE_INSET * 2,
       height: BADGE_HEIGHT,
-    };
+    });
     shapes.push(
       fill !== undefined
         ? { ...badge, kind: "rect", fillColorSlot: fill, cornerRadius: BADGE_RADIUS }
@@ -192,10 +184,7 @@ export function layoutMatrix(outline: OutlineNode[], params: MatrixParams = {}):
     let cy = isBottomRow ? y + BULLET_TOP_PADDING : badgeY + BADGE_HEIGHT + BADGE_INSET;
     quadrant.children.forEach((bullet, j) => {
       if (j > 0) cy += BULLET_GAP;
-      labels.push({
-        nodeIds: [bullet.id],
-        text: bullet.text,
-        depth: 1,
+      labels.push(textNode(bullet, 1, {
         x: x + BULLET_INSET_X,
         y: cy,
         width: QUADRANT_WIDTH - BULLET_INSET_X * 2,
@@ -204,13 +193,10 @@ export function layoutMatrix(outline: OutlineNode[], params: MatrixParams = {}):
         align: "left",
         fontSize: BULLET_FONT_SIZE,
         bulletMarker: BULLET_MARKER,
-      });
+      }));
       cy += BULLET_LINE_HEIGHT;
       bullet.children.forEach((line) => {
-        labels.push({
-          nodeIds: [line.id],
-          text: line.text,
-          depth: 2,
+        labels.push(textNode(line, 2, {
           x: x + BULLET_INSET_X + CONTINUATION_INDENT,
           y: cy,
           width: QUADRANT_WIDTH - BULLET_INSET_X * 2 - CONTINUATION_INDENT,
@@ -218,7 +204,7 @@ export function layoutMatrix(outline: OutlineNode[], params: MatrixParams = {}):
           kind: "label",
           align: "left",
           fontSize: BULLET_FONT_SIZE,
-        });
+        }));
         cy += BULLET_LINE_HEIGHT;
       });
     });
@@ -231,20 +217,18 @@ export function layoutMatrix(outline: OutlineNode[], params: MatrixParams = {}):
 
   // Axis end labels are untracked (params, not outline) and only drawn when
   // set, so an unused end leaves no empty box behind.
-  const axisLabel = (text: string, x: number, y: number, width: number, align: "left" | "center" | "right"): LayoutNode => ({
-    nodeIds: [],
-    text,
-    depth: 0,
-    x,
-    y,
-    width,
-    height: AXIS_END_LABEL_HEIGHT,
-    kind: "label",
-    align,
-    fontSize: AXIS_LABEL_FONT_SIZE,
-    fontWeight: "bold",
-    textColorSlot: "accent",
-  });
+  const axisLabel = (text: string, x: number, y: number, width: number, align: "left" | "center" | "right"): LayoutNode =>
+    fixedText(text, {
+      x,
+      y,
+      width,
+      height: AXIS_END_LABEL_HEIGHT,
+      kind: "label",
+      align,
+      fontSize: AXIS_LABEL_FONT_SIZE,
+      fontWeight: "bold",
+      textColorSlot: "accent",
+    });
   const endLabelX = centerX - AXIS_END_LABEL_WIDTH / 2;
   const topLabelY = -AXIS_OVERHANG - AXIS_LABEL_GAP - AXIS_END_LABEL_HEIGHT;
   const sideLabelY = centerY - AXIS_END_LABEL_HEIGHT / 2;
@@ -262,10 +246,7 @@ export function layoutMatrix(outline: OutlineNode[], params: MatrixParams = {}):
     // Above everything else, flush with the block's left edge (the left
     // axis label's box, whether or not it's drawn, so the title doesn't jump
     // when that label is cleared).
-    labels.push({
-      nodeIds: [],
-      text: title.trim(),
-      depth: 0,
+    labels.push(fixedText(title.trim(), {
       x: leftLabelX,
       y: topLabelY - TITLE_GAP - TITLE_HEIGHT,
       width: TITLE_WIDTH,
@@ -275,7 +256,7 @@ export function layoutMatrix(outline: OutlineNode[], params: MatrixParams = {}):
       fontSize: TITLE_FONT_SIZE,
       fontWeight: "bold",
       underline: true,
-    });
+    }));
   }
 
   // Boxes/badges/cross first, so every label renders on top of them (see

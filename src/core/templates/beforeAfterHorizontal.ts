@@ -1,6 +1,7 @@
 import type { OutlineNode } from "../model/document";
 import type { Point } from "../model/shape";
-import type { LayoutNode } from "./treeLayout";
+import { decoration, fixedText, textNode } from "./layoutNode";
+import type { LayoutNode } from "./layoutNode";
 
 const ROW_HEADER_WIDTH = 220;
 const COLUMN_WIDTH = 620;
@@ -66,10 +67,7 @@ export function layoutBeforeAfterHorizontal(outline: OutlineNode[], beforeLabel:
   // which this pattern is registered with), each with its own solid
   // underline spanning just that column's width (not a single combined
   // rule, matching the reference image's two separate underlines).
-  result.push({
-    nodeIds: [],
-    text: beforeLabel,
-    depth: 0,
+  result.push(fixedText(beforeLabel, {
     x: beforeX,
     y: -COLUMN_HEADER_HEIGHT,
     width: COLUMN_WIDTH,
@@ -78,13 +76,10 @@ export function layoutBeforeAfterHorizontal(outline: OutlineNode[], beforeLabel:
     align: "center",
     fontWeight: "bold",
     fontSize: COLUMN_HEADER_FONT_SIZE,
-  });
-  result.push({ nodeIds: [], text: "", depth: 0, x: beforeX, y: 0, width: COLUMN_WIDTH, height: 0, kind: "line", dashed: false });
+  }));
+  result.push(decoration({ x: beforeX, y: 0, width: COLUMN_WIDTH, height: 0, kind: "line", dashed: false }));
 
-  result.push({
-    nodeIds: [],
-    text: afterLabel,
-    depth: 0,
+  result.push(fixedText(afterLabel, {
     x: afterX,
     y: -COLUMN_HEADER_HEIGHT,
     width: COLUMN_WIDTH,
@@ -93,8 +88,8 @@ export function layoutBeforeAfterHorizontal(outline: OutlineNode[], beforeLabel:
     align: "center",
     fontWeight: "bold",
     fontSize: COLUMN_HEADER_FONT_SIZE,
-  });
-  result.push({ nodeIds: [], text: "", depth: 0, x: afterX, y: 0, width: COLUMN_WIDTH, height: 0, kind: "line", dashed: false });
+  }));
+  result.push(decoration({ x: afterX, y: 0, width: COLUMN_WIDTH, height: 0, kind: "line", dashed: false }));
 
   let y = 0;
   outline.forEach((row, rowIndex) => {
@@ -107,22 +102,16 @@ export function layoutBeforeAfterHorizontal(outline: OutlineNode[], beforeLabel:
     // The row heading cell - a single shape that's both its own background
     // and its own label (kind: "heading"), same reasoning as headingBullets'
     // own row heading (see headingBullets.ts).
-    result.push({
-      nodeIds: [row.id],
-      text: row.text,
-      depth: 0,
+    result.push(textNode(row, 0, {
       x: 0,
       y,
       width: ROW_HEADER_WIDTH,
       height: rowHeight - HEADING_GAP,
       kind: "heading",
-    });
+    }));
 
     beforeItems.forEach((item, i) => {
-      result.push({
-        nodeIds: [item.id],
-        text: item.text,
-        depth: i === 0 ? 1 : 2,
+      result.push(textNode(item, i === 0 ? 1 : 2, {
         x: beforeX + CONTENT_PADDING_X,
         y: y + ROW_PADDING_Y + i * (ITEM_HEIGHT + ITEM_GAP),
         width: COLUMN_WIDTH - CONTENT_PADDING_X - CONTENT_RIGHT_PADDING,
@@ -130,14 +119,11 @@ export function layoutBeforeAfterHorizontal(outline: OutlineNode[], beforeLabel:
         kind: "label",
         align: "left",
         bulletMarker: "• ",
-      });
+      }));
     });
 
     afterItems.forEach((item, i) => {
-      result.push({
-        nodeIds: [item.id],
-        text: item.text,
-        depth: i === 0 ? 1 : 2,
+      result.push(textNode(item, i === 0 ? 1 : 2, {
         x: afterX + CONTENT_PADDING_X,
         y: y + ROW_PADDING_Y + i * (ITEM_HEIGHT + ITEM_GAP),
         width: COLUMN_WIDTH - CONTENT_PADDING_X - CONTENT_RIGHT_PADDING,
@@ -145,18 +131,15 @@ export function layoutBeforeAfterHorizontal(outline: OutlineNode[], beforeLabel:
         kind: "label",
         align: "left",
         bulletMarker: "• ",
-      });
+      }));
     });
 
     // The connector arrow, centered in the gap between the two columns and
     // vertically centered on this row - a fixed neutral gray (`neutralFill`,
-    // see treeLayout.ts/style.ts), not this document's color theme, since
+    // see layoutNode.ts/style.ts), not this document's color theme, since
     // it's structural, not branded content (same reasoning as timeline's
     // track line).
-    result.push({
-      nodeIds: [],
-      text: "",
-      depth: 0,
+    result.push(decoration({
       x: ROW_HEADER_WIDTH + COLUMN_WIDTH + (ARROW_COLUMN_WIDTH - ARROW_SIZE) / 2,
       y: y + rowHeight / 2 - ARROW_SIZE / 2,
       width: ARROW_SIZE,
@@ -164,7 +147,7 @@ export function layoutBeforeAfterHorizontal(outline: OutlineNode[], beforeLabel:
       kind: "polygon",
       points: RIGHT_TRIANGLE_POINTS,
       neutralFill: true,
-    });
+    }));
 
     y += rowHeight;
 
@@ -174,16 +157,13 @@ export function layoutBeforeAfterHorizontal(outline: OutlineNode[], beforeLabel:
     // gap between them (the row heading column is one continuous band of
     // identical color across every row, so a seam there wouldn't show).
     if (rowIndex < outline.length - 1) {
-      result.push({
-        nodeIds: [],
-        text: "",
-        depth: 0,
+      result.push(decoration({
         x: ROW_HEADER_WIDTH,
         y,
         width: TOTAL_WIDTH - ROW_HEADER_WIDTH,
         height: 0,
         kind: "line",
-      });
+      }));
     }
   });
 

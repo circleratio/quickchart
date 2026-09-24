@@ -1,5 +1,6 @@
 import type { OutlineNode } from "../model/document";
-import type { LayoutNode } from "./treeLayout";
+import { decoration, fixedText, textNode } from "./layoutNode";
+import type { LayoutNode } from "./layoutNode";
 
 const ROW_HEADER_WIDTH = 160;
 const COLUMN_WIDTH = 380;
@@ -44,10 +45,7 @@ function layoutCellItems(cell: OutlineNode, originX: number, originY: number): L
 
   cell.children.forEach((title, i) => {
     if (i > 0) y += GROUP_GAP;
-    result.push({
-      nodeIds: [title.id],
-      text: title.text,
-      depth: 2,
+    result.push(textNode(title, 2, {
       x: originX + CELL_PADDING_X,
       y,
       width: contentWidth,
@@ -58,15 +56,12 @@ function layoutCellItems(cell: OutlineNode, originX: number, originY: number): L
       fontWeight: "bold",
       underline: true,
       bulletMarker: "• ",
-    });
+    }));
     y += TITLE_HEIGHT;
 
     title.children.forEach((detail) => {
       y += LINE_GAP;
-      result.push({
-        nodeIds: [detail.id],
-        text: detail.text,
-        depth: 3,
+      result.push(textNode(detail, 3, {
         x: originX + CELL_PADDING_X + DETAIL_INDENT,
         y,
         width: contentWidth - DETAIL_INDENT,
@@ -76,7 +71,7 @@ function layoutCellItems(cell: OutlineNode, originX: number, originY: number): L
         fontSize: DETAIL_FONT_SIZE,
         textColorSlot: 2,
         bulletMarker: "- ",
-      });
+      }));
       y += DETAIL_HEIGHT;
     });
   });
@@ -115,10 +110,7 @@ export function layoutBulletMatrix(outline: OutlineNode[], columnHeaders: string
   const gridBottom = rows.reduce((sum, r) => sum + r.height, 0);
 
   columnHeaders.forEach((header, i) => {
-    result.push({
-      nodeIds: [],
-      text: header,
-      depth: 0,
+    result.push(fixedText(header, {
       x: ROW_HEADER_WIDTH + i * COLUMN_WIDTH,
       y: -COLUMN_HEADER_HEIGHT,
       width: COLUMN_WIDTH,
@@ -127,15 +119,12 @@ export function layoutBulletMatrix(outline: OutlineNode[], columnHeaders: string
       fontSize: HEADER_FONT_SIZE,
       italic: true,
       fillColorSlot: 1,
-    });
+    }));
   });
 
   let y = 0;
   rows.forEach(({ row, cells, height }) => {
-    result.push({
-      nodeIds: [row.id],
-      text: row.text,
-      depth: 0,
+    result.push(textNode(row, 0, {
       x: 0,
       y,
       width: ROW_HEADER_WIDTH,
@@ -143,7 +132,7 @@ export function layoutBulletMatrix(outline: OutlineNode[], columnHeaders: string
       kind: "heading",
       fontSize: HEADER_FONT_SIZE,
       fillColorSlot: "accent",
-    });
+    }));
 
     cells.forEach((cell, i) => {
       if (!cell) return;
@@ -159,16 +148,13 @@ export function layoutBulletMatrix(outline: OutlineNode[], columnHeaders: string
   // bottom of the last row. No line after the last column (the grid's right
   // edge is left open, matching the reference layout).
   for (let i = 0; i < columnCount; i++) {
-    result.push({
-      nodeIds: [],
-      text: "",
-      depth: 0,
+    result.push(decoration({
       x: ROW_HEADER_WIDTH + i * COLUMN_WIDTH,
       y: -COLUMN_HEADER_HEIGHT,
       width: 0,
       height: COLUMN_HEADER_HEIGHT + gridBottom,
       kind: "line",
-    });
+    }));
   }
 
   // Horizontal grid lines between rows only (not above the first row or below
@@ -177,16 +163,13 @@ export function layoutBulletMatrix(outline: OutlineNode[], columnHeaders: string
   rows.forEach(({ height }, rowIndex) => {
     rowBoundaryY += height;
     if (rowIndex < rows.length - 1) {
-      result.push({
-        nodeIds: [],
-        text: "",
-        depth: 0,
+      result.push(decoration({
         x: ROW_HEADER_WIDTH,
         y: rowBoundaryY,
         width: gridWidth,
         height: 0,
         kind: "line",
-      });
+      }));
     }
   });
 

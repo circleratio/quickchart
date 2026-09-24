@@ -1,6 +1,7 @@
 import type { OutlineNode } from "../model/document";
 import type { ThemeColorSlot } from "../model/style";
-import type { LayoutNode } from "./treeLayout";
+import { decoration, fixedText, shapeNode, textNode } from "./layoutNode";
+import type { LayoutNode } from "./layoutNode";
 
 const PYRAMID_WIDTH = 260;
 const COLUMN_WIDTH = 200;
@@ -57,10 +58,7 @@ export function layoutPyramidChart(outline: OutlineNode[], columnHeaders: string
   const totalWidth = PYRAMID_WIDTH + columnHeaders.length * COLUMN_WIDTH;
 
   if (title.trim()) {
-    result.push({
-      nodeIds: [],
-      text: title,
-      depth: 0,
+    result.push(fixedText(title, {
       x: 0,
       y: -(COLUMN_HEADER_HEIGHT + TITLE_HEIGHT),
       width: totalWidth,
@@ -69,28 +67,22 @@ export function layoutPyramidChart(outline: OutlineNode[], columnHeaders: string
       align: "center",
       fontWeight: "bold",
       fontSize: TITLE_FONT_SIZE,
-    });
+    }));
     // Solid divider between the title and the column-header row, spanning the
     // whole diagram width (pyramid column included) - unlike the dashed
     // row-to-row separators below, which only span the table region.
-    result.push({
-      nodeIds: [],
-      text: "",
-      depth: 0,
+    result.push(decoration({
       x: 0,
       y: -COLUMN_HEADER_HEIGHT,
       width: totalWidth,
       height: 0,
       kind: "line",
       dashed: false,
-    });
+    }));
   }
 
   columnHeaders.forEach((header, j) => {
-    result.push({
-      nodeIds: [],
-      text: header,
-      depth: 0,
+    result.push(fixedText(header, {
       x: PYRAMID_WIDTH + j * COLUMN_WIDTH,
       y: -COLUMN_HEADER_HEIGHT,
       width: COLUMN_WIDTH,
@@ -99,7 +91,7 @@ export function layoutPyramidChart(outline: OutlineNode[], columnHeaders: string
       align: "center",
       underline: true,
       fontSize: HEADER_FONT_SIZE,
-    });
+    }));
   });
 
   outline.forEach((row, i) => {
@@ -109,10 +101,7 @@ export function layoutPyramidChart(outline: OutlineNode[], columnHeaders: string
     // The band's fill first, so it renders underneath the item/scale labels
     // drawn on top of it (see regenerateBlockShapes in sync.ts) - same
     // ordering reason as matrix.ts's background square.
-    result.push({
-      nodeIds: [row.id],
-      text: "",
-      depth: 0,
+    result.push(shapeNode(row, {
       x: 0,
       y,
       width: PYRAMID_WIDTH,
@@ -120,7 +109,7 @@ export function layoutPyramidChart(outline: OutlineNode[], columnHeaders: string
       kind: "polygon",
       points: bandPoints(i, rowCount),
       fillColorSlot: slot,
-    });
+    }));
 
     // The item-name/scale labels sit directly on top of the band above, whose
     // fill goes from a dark shade at the apex to a light one at the base
@@ -128,10 +117,7 @@ export function layoutPyramidChart(outline: OutlineNode[], columnHeaders: string
     // text for whichever shade this particular level landed on, rather than
     // a color fixed regardless of the band underneath (see style.ts's
     // contrastTextColor).
-    result.push({
-      nodeIds: [row.id],
-      text: row.text,
-      depth: 0,
+    result.push(textNode(row, 0, {
       x: 0,
       y: y + ROW_HEIGHT / 2 - ITEM_LABEL_HEIGHT,
       width: PYRAMID_WIDTH,
@@ -141,14 +127,11 @@ export function layoutPyramidChart(outline: OutlineNode[], columnHeaders: string
       fontWeight: "bold",
       fontSize: ITEM_LABEL_FONT_SIZE,
       contrastBgColorSlot: slot,
-    });
+    }));
 
     const scale = row.children[0];
     if (scale) {
-      result.push({
-        nodeIds: [scale.id],
-        text: scale.text,
-        depth: 1,
+      result.push(textNode(scale, 1, {
         x: 0,
         y: y + ROW_HEIGHT / 2,
         width: PYRAMID_WIDTH,
@@ -157,16 +140,13 @@ export function layoutPyramidChart(outline: OutlineNode[], columnHeaders: string
         align: "center",
         fontSize: SCALE_LABEL_FONT_SIZE,
         contrastBgColorSlot: slot,
-      });
+      }));
     }
 
     columnHeaders.forEach((_, j) => {
       const cell = row.children[1 + j];
       if (!cell) return;
-      result.push({
-        nodeIds: [cell.id],
-        text: cell.text,
-        depth: 1,
+      result.push(textNode(cell, 1, {
         x: PYRAMID_WIDTH + j * COLUMN_WIDTH,
         y: y + ROW_HEIGHT / 2 - CELL_HEIGHT / 2,
         width: COLUMN_WIDTH,
@@ -174,7 +154,7 @@ export function layoutPyramidChart(outline: OutlineNode[], columnHeaders: string
         kind: "label",
         align: "center",
         fontSize: CELL_FONT_SIZE,
-      });
+      }));
     });
 
     // Dashed separator between this row and the next (not above the first or
@@ -183,16 +163,13 @@ export function layoutPyramidChart(outline: OutlineNode[], columnHeaders: string
     // headingBullets' single-color heading column which needed this trick to
     // read as separate rows at all.
     if (columnHeaders.length > 0 && i < rowCount - 1) {
-      result.push({
-        nodeIds: [],
-        text: "",
-        depth: 0,
+      result.push(decoration({
         x: PYRAMID_WIDTH,
         y: y + ROW_HEIGHT,
         width: columnHeaders.length * COLUMN_WIDTH,
         height: 0,
         kind: "line",
-      });
+      }));
     }
   });
 

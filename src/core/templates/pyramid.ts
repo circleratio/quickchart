@@ -1,6 +1,6 @@
 import type { OutlineNode } from "../model/document";
 import { layoutTree } from "./treeLayout";
-import type { LayoutNode } from "./treeLayout";
+import type { LayoutNode } from "./layoutNode";
 
 const NODE_WIDTH = 160;
 const NODE_HEIGHT = 60;

@@ -1,6 +1,7 @@
 import type { OutlineNode } from "../model/document";
 import type { Point } from "../model/shape";
-import type { LayoutNode } from "./treeLayout";
+import { decoration, fixedText, shapeNode, textNode } from "./layoutNode";
+import type { LayoutNode } from "./layoutNode";
 
 const SIDEBAR_WIDTH = 140;
 const COLUMN_WIDTH = 340;
@@ -104,11 +105,8 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
   // ordering reason as matrix.ts's background square. Untracked (`nodeIds:
   // []`): "ASIS"/"TOBE" are fixed structural furniture, not derived from any
   // outline node, same reasoning as flowSchedule's title.
-  result.push({ nodeIds: [], text: "", depth: 0, x: 0, y: asisTop, width: SIDEBAR_WIDTH, height: asisHeight, kind: "rect", fillColorSlot: 0 });
-  result.push({
-    nodeIds: [],
-    text: ASIS_LABEL,
-    depth: 0,
+  result.push(decoration({ x: 0, y: asisTop, width: SIDEBAR_WIDTH, height: asisHeight, kind: "rect", fillColorSlot: 0 }));
+  result.push(fixedText(ASIS_LABEL, {
     x: 0,
     y: asisTop,
     width: SIDEBAR_WIDTH,
@@ -118,13 +116,10 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
     fontWeight: "bold",
     fontSize: SIDEBAR_LABEL_FONT_SIZE,
     contrastBgColorSlot: 0,
-  });
+  }));
 
-  result.push({ nodeIds: [], text: "", depth: 0, x: 0, y: tobeTop, width: SIDEBAR_WIDTH, height: tobeHeight, kind: "rect", fillColorSlot: 1 });
-  result.push({
-    nodeIds: [],
-    text: TOBE_LABEL,
-    depth: 0,
+  result.push(decoration({ x: 0, y: tobeTop, width: SIDEBAR_WIDTH, height: tobeHeight, kind: "rect", fillColorSlot: 1 }));
+  result.push(fixedText(TOBE_LABEL, {
     x: 0,
     y: tobeTop,
     width: SIDEBAR_WIDTH,
@@ -134,7 +129,7 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
     fontWeight: "bold",
     fontSize: SIDEBAR_LABEL_FONT_SIZE,
     contrastBgColorSlot: 1,
-  });
+  }));
 
   outline.forEach((topic, i) => {
     const x = SIDEBAR_WIDTH + COLUMN_GAP + i * (COLUMN_WIDTH + COLUMN_GAP);
@@ -142,13 +137,10 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
     const tobe = topic.children[1];
 
     // ASIS cell background - fixed neutral gray (`neutralFill`, see
-    // treeLayout.ts/style.ts), not this document's color theme: it reads as
+    // layoutNode.ts/style.ts), not this document's color theme: it reads as
     // the "problem" state, which shouldn't carry the brand color the TOBE
     // cell (the theme-colored future state) gets below.
-    result.push({
-      nodeIds: asis ? [asis.id] : [],
-      text: "",
-      depth: 0,
+    result.push(shapeNode(asis, {
       x,
       y: asisTop,
       width: COLUMN_WIDTH,
@@ -156,28 +148,22 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
       kind: "rect",
       neutralFill: true,
       cornerRadius: CORNER_RADIUS,
-    });
+    }));
 
     // The badge is the TOPIC's own text (see the doc comment above), not a
     // fixed decoration or a child of the ASIS block.
     let cy = asisTop + CELL_PADDING_Y;
-    result.push({
-      nodeIds: [topic.id],
-      text: topic.text,
-      depth: 0,
+    result.push(textNode(topic, 0, {
       x: x + (COLUMN_WIDTH - BADGE_WIDTH) / 2,
       y: cy,
       width: BADGE_WIDTH,
       height: BADGE_HEIGHT,
       kind: "heading",
       fontSize: BADGE_FONT_SIZE,
-    });
+    }));
     cy += BADGE_HEIGHT + BADGE_TO_HEADLINE_GAP;
 
-    result.push({
-      nodeIds: asis ? [asis.id] : [],
-      text: asis?.text ?? "",
-      depth: 1,
+    result.push(textNode(asis, 1, {
       x: x + CELL_PADDING_X,
       y: cy,
       width: COLUMN_WIDTH - CELL_PADDING_X * 2,
@@ -186,17 +172,14 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
       align: "center",
       fontWeight: "bold",
       fontSize: HEADLINE_FONT_SIZE,
-    });
+    }));
     cy += HEADLINE_HEIGHT;
 
     const descLines = asis?.children ?? [];
     if (descLines.length > 0) {
       cy += HEADLINE_TO_DESC_GAP;
       descLines.forEach((desc, j) => {
-        result.push({
-          nodeIds: [desc.id],
-          text: desc.text,
-          depth: 2,
+        result.push(textNode(desc, 2, {
           x: x + CELL_PADDING_X,
           y: cy + j * DESC_LINE_HEIGHT,
           width: COLUMN_WIDTH - CELL_PADDING_X * 2,
@@ -205,14 +188,11 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
           align: "left",
           fontSize: DESC_FONT_SIZE,
           textColorSlot: 2,
-        });
+        }));
       });
     }
 
-    result.push({
-      nodeIds: [],
-      text: "",
-      depth: 0,
+    result.push(decoration({
       x: x + COLUMN_WIDTH / 2 - ARROW_SIZE / 2,
       y: gapTop + (ARROW_GAP - ARROW_SIZE) / 2,
       width: ARROW_SIZE,
@@ -220,14 +200,11 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
       kind: "polygon",
       points: DOWN_TRIANGLE_POINTS,
       fillColorSlot: 0,
-    });
+    }));
 
     // TOBE cell background - the theme's own palest shade (unlike ASIS's
     // fixed neutral gray above), so it reads as this document's brand color.
-    result.push({
-      nodeIds: tobe ? [tobe.id] : [],
-      text: "",
-      depth: 0,
+    result.push(shapeNode(tobe, {
       x,
       y: tobeTop,
       width: COLUMN_WIDTH,
@@ -235,15 +212,12 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
       kind: "rect",
       fillColorSlot: 4,
       cornerRadius: CORNER_RADIUS,
-    });
+    }));
 
     const tobeLines = tobe ? [tobe, ...tobe.children] : [];
     const ty = tobeTop + CELL_PADDING_Y;
     tobeLines.forEach((line, j) => {
-      result.push({
-        nodeIds: [line.id],
-        text: line.text,
-        depth: j === 0 ? 1 : 2,
+      result.push(textNode(line, j === 0 ? 1 : 2, {
         x: x + CELL_PADDING_X,
         y: ty + j * TOBE_LINE_HEIGHT,
         width: COLUMN_WIDTH - CELL_PADDING_X * 2,
@@ -253,7 +227,7 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
         fontWeight: "bold",
         fontSize: TOBE_FONT_SIZE,
         textColorSlot: 1,
-      });
+      }));
     });
   });
 

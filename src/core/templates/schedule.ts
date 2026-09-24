@@ -1,5 +1,6 @@
 import type { OutlineNode } from "../model/document";
-import type { LayoutNode } from "./treeLayout";
+import { decoration, fixedText, textNode } from "./layoutNode";
+import type { LayoutNode } from "./layoutNode";
 
 const ROW_NUMBER_WIDTH = 44;
 const ROW_LABEL_WIDTH = 260;
@@ -137,10 +138,7 @@ export function layoutSchedule(outline: OutlineNode[], params: ScheduleParams): 
   const gridWidth = columnCount * MONTH_COLUMN_WIDTH;
   const gridBottom = outline.length * ROW_HEIGHT;
 
-  result.push({
-    nodeIds: [],
-    text: `${startYear}年`,
-    depth: 0,
+  result.push(fixedText(`${startYear}年`, {
     x: left,
     y: -(MILESTONE_AREA_HEIGHT + MONTH_HEADER_HEIGHT + YEAR_HEADER_HEIGHT),
     width: gridWidth,
@@ -149,15 +147,12 @@ export function layoutSchedule(outline: OutlineNode[], params: ScheduleParams): 
     align: "center",
     fontSize: HEADER_FONT_SIZE,
     fontWeight: "bold",
-  });
+  }));
 
   for (let i = 0; i < columnCount; i++) {
     const monthIndex0 = startMonth - 1 + i;
     const month = (monthIndex0 % 12) + 1;
-    result.push({
-      nodeIds: [],
-      text: `${month}月`,
-      depth: 0,
+    result.push(fixedText(`${month}月`, {
       x: left + i * MONTH_COLUMN_WIDTH,
       y: -(MILESTONE_AREA_HEIGHT + MONTH_HEADER_HEIGHT),
       width: MONTH_COLUMN_WIDTH,
@@ -165,7 +160,7 @@ export function layoutSchedule(outline: OutlineNode[], params: ScheduleParams): 
       kind: "text",
       align: "center",
       fontSize: HEADER_FONT_SIZE,
-    });
+    }));
   }
 
   // Vertical grid lines - one per month-column boundary (columnCount + 1),
@@ -174,16 +169,13 @@ export function layoutSchedule(outline: OutlineNode[], params: ScheduleParams): 
   // bulletMatrix.ts). Drawn before the rows/bars below so it renders
   // underneath them (see regenerateBlockShapes in sync.ts).
   for (let i = 0; i <= columnCount; i++) {
-    result.push({
-      nodeIds: [],
-      text: "",
-      depth: 0,
+    result.push(decoration({
       x: left + i * MONTH_COLUMN_WIDTH,
       y: 0,
       width: 0,
       height: gridBottom,
       kind: "line",
-    });
+    }));
   }
 
   const barLayoutById = new Map<string, LayoutNode>();
@@ -191,61 +183,49 @@ export function layoutSchedule(outline: OutlineNode[], params: ScheduleParams): 
   outline.forEach((row, i) => {
     const y = i * ROW_HEIGHT;
 
-    result.push({
-      nodeIds: [],
-      text: `(${i + 1})`,
-      depth: 0,
+    result.push(fixedText(`(${i + 1})`, {
       x: 0,
       y,
       width: ROW_NUMBER_WIDTH,
       height: ROW_HEIGHT,
       kind: "text",
       align: "center",
-    });
+    }));
 
-    result.push({
-      nodeIds: [row.id],
-      text: row.text,
-      depth: 0,
+    result.push(textNode(row, 0, {
       x: ROW_NUMBER_WIDTH,
       y,
       width: ROW_LABEL_WIDTH,
       height: ROW_HEIGHT,
       kind: "text",
       align: "left",
-    });
+    }));
 
     row.children.forEach((bar) => {
       const startX = dateToGridX(bar.children[0]?.text, params);
       const endX = dateToGridX(bar.children[1]?.text, params);
       if (startX === null || endX === null) return;
 
-      const barLayout: LayoutNode = {
-        nodeIds: [bar.id],
-        text: bar.text,
-        depth: 1,
+      const barLayout: LayoutNode = textNode(bar, 1, {
         x: left + Math.min(startX, endX),
         y: y + (ROW_HEIGHT - BAR_HEIGHT) / 2,
         width: Math.max(BAR_MIN_WIDTH, Math.abs(endX - startX)),
         height: BAR_HEIGHT,
         kind: "text",
         align: "center",
-      };
+      });
       result.push(barLayout);
       barLayoutById.set(bar.id, barLayout);
     });
 
     if (i < outline.length - 1) {
-      result.push({
-        nodeIds: [],
-        text: "",
-        depth: 0,
+      result.push(decoration({
         x: left,
         y: y + ROW_HEIGHT,
         width: gridWidth,
         height: 0,
         kind: "line",
-      });
+      }));
     }
   });
 
@@ -254,10 +234,7 @@ export function layoutSchedule(outline: OutlineNode[], params: ScheduleParams): 
     const to = barLayoutById.get(toId);
     if (!from || !to) continue;
     for (const { x1, y1, x2, y2, arrowhead } of connectionSegments(from, to)) {
-      result.push({
-        nodeIds: [],
-        text: "",
-        depth: 0,
+      result.push(decoration({
         x: x1,
         y: y1,
         width: x2 - x1,
@@ -265,7 +242,7 @@ export function layoutSchedule(outline: OutlineNode[], params: ScheduleParams): 
         kind: "line",
         dashed: false,
         arrowhead,
-      });
+      }));
     }
   }
 
@@ -277,10 +254,7 @@ export function layoutSchedule(outline: OutlineNode[], params: ScheduleParams): 
     // same milestone.date successfully.
     const monthDay = formatMonthDay(milestone.date)!;
 
-    result.push({
-      nodeIds: [],
-      text: `${milestone.label}(${monthDay})`,
-      depth: 0,
+    result.push(fixedText(`${milestone.label}(${monthDay})`, {
       x: absoluteX - MONTH_COLUMN_WIDTH / 2,
       y: -MILESTONE_AREA_HEIGHT,
       width: MONTH_COLUMN_WIDTH,
@@ -288,12 +262,9 @@ export function layoutSchedule(outline: OutlineNode[], params: ScheduleParams): 
       kind: "label",
       align: "center",
       fontSize: MILESTONE_FONT_SIZE,
-    });
+    }));
 
-    result.push({
-      nodeIds: [],
-      text: "",
-      depth: 0,
+    result.push(decoration({
       x: absoluteX - MILESTONE_TRIANGLE_SIZE / 2,
       y: -MILESTONE_TRIANGLE_SIZE,
       width: MILESTONE_TRIANGLE_SIZE,
@@ -305,7 +276,7 @@ export function layoutSchedule(outline: OutlineNode[], params: ScheduleParams): 
         { x: 0.5, y: 1 },
       ],
       fillColorSlot: 0,
-    });
+    }));
   });
 
   return result;

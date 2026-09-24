@@ -1,5 +1,6 @@
 import type { OutlineNode } from "../model/document";
-import type { LayoutNode } from "./treeLayout";
+import { decoration, textNode } from "./layoutNode";
+import type { LayoutNode } from "./layoutNode";
 
 const HEADING_WIDTH = 220;
 const CONTENT_WIDTH = 700;
@@ -39,22 +40,16 @@ export function layoutHeadingBullets(outline: OutlineNode[]): LayoutNode[] {
     // this row's nodeId with the label shape, would confuse relayoutBlock's
     // per-nodeId shape matching in sync.ts - see matrix.ts's own two-shape
     // quadrant for the shape this avoids).
-    result.push({
-      nodeIds: [row.id],
-      text: row.text,
-      depth: 0,
+    result.push(textNode(row, 0, {
       x: 0,
       y,
       width: HEADING_WIDTH,
       height: rowHeight - HEADING_GAP,
       kind: "heading",
-    });
+    }));
 
     row.children.forEach((item, itemIndex) => {
-      result.push({
-        nodeIds: [item.id],
-        text: item.text,
-        depth: 1,
+      result.push(textNode(item, 1, {
         x: HEADING_WIDTH + BULLET_INDENT,
         y: y + ROW_PADDING_Y + itemIndex * (ITEM_HEIGHT + ITEM_GAP),
         width: CONTENT_WIDTH - BULLET_INDENT - CONTENT_RIGHT_PADDING,
@@ -62,7 +57,7 @@ export function layoutHeadingBullets(outline: OutlineNode[]): LayoutNode[] {
         kind: "label",
         align: "left",
         bulletMarker: "• ",
-      });
+      }));
     });
 
     y += rowHeight;
@@ -72,16 +67,13 @@ export function layoutHeadingBullets(outline: OutlineNode[]): LayoutNode[] {
     // column: the heading column is one continuous band of identical color
     // across every row, so a seam there wouldn't be visible anyway.
     if (rowIndex < outline.length - 1) {
-      result.push({
-        nodeIds: [],
-        text: "",
-        depth: 0,
+      result.push(decoration({
         x: HEADING_WIDTH,
         y,
         width: CONTENT_WIDTH,
         height: 0,
         kind: "line",
-      });
+      }));
     }
   });
 

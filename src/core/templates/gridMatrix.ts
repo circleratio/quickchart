@@ -1,5 +1,6 @@
 import type { OutlineNode } from "../model/document";
-import type { LayoutNode } from "./treeLayout";
+import { decoration, fixedText, textNode } from "./layoutNode";
+import type { LayoutNode } from "./layoutNode";
 
 const TILE_WIDTH = 220;
 const TILE_HEIGHT = 220;
@@ -46,10 +47,7 @@ export function layoutGridMatrix(outline: OutlineNode[], title: string): LayoutN
   const rowY = (j: number) => gridY + j * (TILE_HEIGHT + TILE_GAP);
 
   if (trimmedTitle) {
-    labels.push({
-      nodeIds: [],
-      text: trimmedTitle,
-      depth: 0,
+    labels.push(fixedText(trimmedTitle, {
       x: 0,
       y: 0,
       width: TITLE_WIDTH,
@@ -59,8 +57,8 @@ export function layoutGridMatrix(outline: OutlineNode[], title: string): LayoutN
       fontSize: TITLE_FONT_SIZE,
       fontWeight: "bold",
       textColorSlot: 0,
-    });
-    shapes.push({ nodeIds: [], text: "", depth: 0, x: 0, y: TITLE_HEIGHT, width: TITLE_WIDTH, height: 0, kind: "line", dashed: false });
+    }));
+    shapes.push(decoration({ x: 0, y: TITLE_HEIGHT, width: TITLE_WIDTH, height: 0, kind: "line", dashed: false }));
   }
 
   // Tiles are pure structure, not tied to any outline node - always
@@ -68,25 +66,19 @@ export function layoutGridMatrix(outline: OutlineNode[], title: string): LayoutN
   // sync.ts).
   rows.forEach((_, j) => {
     columns.forEach((_, i) => {
-      shapes.push({
-        nodeIds: [],
-        text: "",
-        depth: 0,
+      shapes.push(decoration({
         x: colX(i),
         y: rowY(j),
         width: TILE_WIDTH,
         height: TILE_HEIGHT,
         kind: "rect",
         neutralFill: true,
-      });
+      }));
     });
   });
 
   columns.forEach((column, i) => {
-    labels.push({
-      nodeIds: [column.id],
-      text: column.text,
-      depth: 1,
+    labels.push(textNode(column, 1, {
       x: colX(i),
       y: gridY + gridHeight + AXIS_LABEL_GAP,
       width: TILE_WIDTH,
@@ -94,13 +86,10 @@ export function layoutGridMatrix(outline: OutlineNode[], title: string): LayoutN
       kind: "label",
       align: "center",
       fontSize: AXIS_LABEL_FONT_SIZE,
-    });
+    }));
   });
   rows.forEach((row, j) => {
-    labels.push({
-      nodeIds: [row.id],
-      text: row.text,
-      depth: 1,
+    labels.push(textNode(row, 1, {
       x: PILL_THICKNESS + AXIS_LABEL_GAP,
       y: rowY(j),
       width: AXIS_LABEL_SIZE,
@@ -108,15 +97,12 @@ export function layoutGridMatrix(outline: OutlineNode[], title: string): LayoutN
       kind: "label",
       align: "center",
       fontSize: AXIS_LABEL_FONT_SIZE,
-    });
+    }));
   });
 
   if (xAxis && columns.length > 0) {
     const y = gridY + gridHeight + AXIS_LABEL_GAP + AXIS_LABEL_SIZE + AXIS_LABEL_GAP;
-    shapes.push({
-      nodeIds: [],
-      text: "",
-      depth: 0,
+    shapes.push(decoration({
       x: gridX,
       y,
       width: gridWidth,
@@ -124,11 +110,8 @@ export function layoutGridMatrix(outline: OutlineNode[], title: string): LayoutN
       kind: "rect",
       fillColorSlot: 3,
       cornerRadius: PILL_THICKNESS / 2,
-    });
-    labels.push({
-      nodeIds: [xAxis.id],
-      text: xAxis.text,
-      depth: 0,
+    }));
+    labels.push(textNode(xAxis, 0, {
       x: gridX,
       y,
       width: gridWidth,
@@ -138,14 +121,11 @@ export function layoutGridMatrix(outline: OutlineNode[], title: string): LayoutN
       fontSize: PILL_FONT_SIZE,
       fontWeight: "bold",
       contrastBgColorSlot: 3,
-    });
+    }));
   }
 
   if (yAxis && rows.length > 0) {
-    shapes.push({
-      nodeIds: [],
-      text: "",
-      depth: 0,
+    shapes.push(decoration({
       x: 0,
       y: gridY,
       width: PILL_THICKNESS,
@@ -153,17 +133,14 @@ export function layoutGridMatrix(outline: OutlineNode[], title: string): LayoutN
       kind: "rect",
       fillColorSlot: 3,
       cornerRadius: PILL_THICKNESS / 2,
-    });
+    }));
     // No vertical writing mode for text shapes, so the name is a horizontal
     // label rotated to read bottom-to-top. Its unrotated box is the pill's
     // box turned sideways, centered on the same point, so rotating it around
     // its own center (ShapeRenderer's rotationTransform) lands it on the pill.
     const cx = PILL_THICKNESS / 2;
     const cy = gridY + gridHeight / 2;
-    labels.push({
-      nodeIds: [yAxis.id],
-      text: yAxis.text,
-      depth: 0,
+    labels.push(textNode(yAxis, 0, {
       x: cx - gridHeight / 2,
       y: cy - PILL_THICKNESS / 2,
       width: gridHeight,
@@ -174,7 +151,7 @@ export function layoutGridMatrix(outline: OutlineNode[], title: string): LayoutN
       fontWeight: "bold",
       contrastBgColorSlot: 3,
       rotation: -90,
-    });
+    }));
   }
 
   // Tiles/pills first, so every label renders on top of them (see

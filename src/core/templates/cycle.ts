@@ -1,7 +1,8 @@
 import type { OutlineNode } from "../model/document";
 import type { Point } from "../model/shape";
 import type { ThemeColorSlot } from "../model/style";
-import type { LayoutNode } from "./treeLayout";
+import { fixedText, shapeNode, textNode } from "./layoutNode";
+import type { LayoutNode } from "./layoutNode";
 
 // Ring geometry. The ring's center is (CENTER_X, CENTER_Y) in layout
 // coordinates; sync.ts's normalizeToOrigin shifts the whole block so its
@@ -63,17 +64,14 @@ function arc(from: number, to: number, radius: number): Point[] {
 
 // Converts absolute points into a polygon LayoutNode (points as fractions of
 // its own bounding box, like every other PolygonShape).
-function polygonNode(nodeId: string, abs: Point[], fillColorSlot: ThemeColorSlot): LayoutNode {
+function polygonNode(node: OutlineNode, abs: Point[], fillColorSlot: ThemeColorSlot): LayoutNode {
   const minX = Math.min(...abs.map((p) => p.x));
   const maxX = Math.max(...abs.map((p) => p.x));
   const minY = Math.min(...abs.map((p) => p.y));
   const maxY = Math.max(...abs.map((p) => p.y));
   const width = maxX - minX;
   const height = maxY - minY;
-  return {
-    nodeIds: [nodeId],
-    text: "",
-    depth: 0,
+  return shapeNode(node, {
     x: minX,
     y: minY,
     width,
@@ -81,7 +79,7 @@ function polygonNode(nodeId: string, abs: Point[], fillColorSlot: ThemeColorSlot
     kind: "polygon",
     points: abs.map((p) => ({ x: (p.x - minX) / width, y: (p.y - minY) / height })),
     fillColorSlot,
-  };
+  });
 }
 
 // An arrow's pointed head: its two flared base corners, its tip, and the
@@ -224,10 +222,7 @@ function stepLines(step: OutlineNode): OutlineNode[] {
 function stepLabels(step: OutlineNode, cx: number, cy: number, width: number, bgSlot: ThemeColorSlot): LayoutNode[] {
   const lines = stepLines(step);
   const top = cy - (lines.length * LINE_HEIGHT) / 2;
-  return lines.map((line, k) => ({
-    nodeIds: [line.id],
-    text: line.text,
-    depth: line === step ? 0 : 1,
+  return lines.map((line, k) => textNode(line, line === step ? 0 : 1, {
     x: cx - width / 2,
     y: top + k * LINE_HEIGHT,
     width,
@@ -247,23 +242,20 @@ function entryLabels(entry: OutlineNode, left: number, width: number): LayoutNod
   let y = CENTER_Y - R_MID - (lineCount * LINE_HEIGHT) / 2;
   const common = { kind: "label" as const, align: "left" as const, height: LINE_HEIGHT, contrastBgColorSlot: LIGHT_SLOT };
   const result: LayoutNode[] = [
-    { ...common, nodeIds: [entry.id], text: entry.text, depth: 0, x: left, y, width, fontSize: ENTRY_HEADING_FONT_SIZE },
+    textNode(entry, 0, { ...common, x: left, y, width, fontSize: ENTRY_HEADING_FONT_SIZE }),
   ];
   y += LINE_HEIGHT;
   for (const bullet of entry.children) {
-    result.push({ ...common, nodeIds: [bullet.id], text: bullet.text, depth: 1, x: left, y, width, fontSize: LABEL_FONT_SIZE, bulletMarker: BULLET_MARKER });
+    result.push(textNode(bullet, 1, { ...common, x: left, y, width, fontSize: LABEL_FONT_SIZE, bulletMarker: BULLET_MARKER }));
     y += LINE_HEIGHT;
     for (const line of bullet.children) {
-      result.push({
+      result.push(textNode(line, 2, {
         ...common,
-        nodeIds: [line.id],
-        text: line.text,
-        depth: 2,
         x: left + CONTINUATION_INDENT,
         y,
         width: width - CONTINUATION_INDENT,
         fontSize: LABEL_FONT_SIZE,
-      });
+      }));
       y += LINE_HEIGHT;
     }
   }
@@ -304,7 +296,7 @@ export function layoutCycle(outline: OutlineNode[], title: string, withEntry: bo
     // Nests into the straight arrow's notch; flat tail on the far left.
     const tipX = STRAIGHT_START_X + HEAD_LEN - SEGMENT_GAP;
     const startX = tipX - ENTRY_LENGTH;
-    shapes.push(polygonNode(entry.id, straightArrowPoints(startX, tipX), LIGHT_SLOT));
+    shapes.push(polygonNode(entry, straightArrowPoints(startX, tipX), LIGHT_SLOT));
     labels.push(...entryLabels(entry, startX + ENTRY_PADDING_X, ENTRY_LENGTH - HEAD_LEN - ENTRY_PADDING_X * 2));
     prevHead = straightHead(tipX);
   }
@@ -314,7 +306,7 @@ export function layoutCycle(outline: OutlineNode[], title: string, withEntry: bo
     const tipX = CENTER_X + R_MID * Math.sin(head - gap);
     const slot = slotFor(0);
     const notch = prevHead && notchFor(prevHead, SEGMENT_GAP, false);
-    shapes.push(polygonNode(straight.id, straightArrowPoints(STRAIGHT_START_X, tipX, notch), slot));
+    shapes.push(polygonNode(straight, straightArrowPoints(STRAIGHT_START_X, tipX, notch), slot));
     const left = STRAIGHT_START_X + HEAD_LEN;
     const right = tipX - HEAD_LEN;
     labels.push(...stepLabels(straight, (left + right) / 2, MID_Y, right - left, slot));
@@ -336,7 +328,7 @@ export function layoutCycle(outline: OutlineNode[], title: string, withEntry: bo
       const loopIndex = withEntry ? i + 1 : i;
       const slot = slotFor(loopIndex);
       const notch = notchFor(prevHead!, gap * R_MID, true);
-      shapes.push(polygonNode(node.id, arcArrowPoints(start, end, head, notch), slot));
+      shapes.push(polygonNode(node, arcArrowPoints(start, end, head, notch), slot));
       const mid = polar((start + head + end - head) / 2, R_MID);
       labels.push(...stepLabels(node, mid.x, mid.y, Math.min(LABEL_WIDTH, BAND + 10), slot));
       prevHead = arcHead(end, head);
@@ -345,10 +337,7 @@ export function layoutCycle(outline: OutlineNode[], title: string, withEntry: bo
 
   const trimmedTitle = title.trim();
   if (trimmedTitle && outline.length > 0) {
-    labels.push({
-      nodeIds: [],
-      text: trimmedTitle,
-      depth: 0,
+    labels.push(fixedText(trimmedTitle, {
       x: CENTER_X - TITLE_WIDTH / 2,
       y: CENTER_Y - TITLE_HEIGHT / 2,
       width: TITLE_WIDTH,
@@ -357,7 +346,7 @@ export function layoutCycle(outline: OutlineNode[], title: string, withEntry: bo
       align: "center",
       fontSize: TITLE_FONT_SIZE,
       fontWeight: "bold",
-    });
+    }));
   }
 
   // Arrows first, so every label renders on top of them (see

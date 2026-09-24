@@ -1,6 +1,7 @@
 import type { OutlineNode } from "../model/document";
 import type { ThemeColorSlot } from "../model/style";
-import type { LayoutNode } from "./treeLayout";
+import { decoration, shapeNode, textNode } from "./layoutNode";
+import type { LayoutNode } from "./layoutNode";
 
 const CIRCLE_DIAMETER = 168;
 // Horizontal gap between circles, doubling as the connector arrow's length.
@@ -50,10 +51,7 @@ export function layoutHorizontalFlow(outline: OutlineNode[]): LayoutNode[] {
     // The circle first, so it renders underneath the label shapes drawn on
     // top of it (see regenerateBlockShapes in sync.ts) - same ordering
     // reason as pyramidChart's band/matrix's quadrant background.
-    result.push({
-      nodeIds: [step.id],
-      text: "",
-      depth: 0,
+    result.push(shapeNode(step, {
       x,
       y: 0,
       width: CIRCLE_DIAMETER,
@@ -61,7 +59,7 @@ export function layoutHorizontalFlow(outline: OutlineNode[]): LayoutNode[] {
       kind: "ellipse",
       dashed: isFirst,
       fillColorSlot: colorSlot,
-    });
+    }));
 
     // The step's own label (root) plus any extra lines (children), stacked
     // and centered as one block - uniform styling throughout, so which line
@@ -72,10 +70,7 @@ export function layoutHorizontalFlow(outline: OutlineNode[]): LayoutNode[] {
     const startY = centerY - contentHeight / 2;
 
     lines.forEach((line, i) => {
-      result.push({
-        nodeIds: [line.id],
-        text: line.text,
-        depth: i === 0 ? 0 : 1,
+      result.push(textNode(line, i === 0 ? 0 : 1, {
         x: labelX,
         y: startY + i * LABEL_LINE_HEIGHT,
         width: LABEL_WIDTH,
@@ -85,7 +80,7 @@ export function layoutHorizontalFlow(outline: OutlineNode[]): LayoutNode[] {
         fontSize: LABEL_FONT_SIZE,
         fontWeight: "bold",
         ...(colorSlot !== undefined ? { contrastBgColorSlot: colorSlot } : {}),
-      });
+      }));
     });
   });
 
@@ -95,10 +90,7 @@ export function layoutHorizontalFlow(outline: OutlineNode[]): LayoutNode[] {
   // node. All circles share the same height, so centerY is constant.
   for (let i = 0; i < circleRights.length - 1; i++) {
     const nextX = (i + 1) * (CIRCLE_DIAMETER + STEP_GAP);
-    result.push({
-      nodeIds: [],
-      text: "",
-      depth: 0,
+    result.push(decoration({
       x: circleRights[i],
       y: centerY,
       width: nextX - circleRights[i],
@@ -106,7 +98,7 @@ export function layoutHorizontalFlow(outline: OutlineNode[]): LayoutNode[] {
       kind: "line",
       dashed: false,
       arrowhead: true,
-    });
+    }));
   }
 
   return result;

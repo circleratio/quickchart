@@ -1,6 +1,7 @@
 import type { OutlineNode } from "../model/document";
 import type { ThemeColorSlot } from "../model/style";
-import type { LayoutNode } from "./treeLayout";
+import { decoration, textNode } from "./layoutNode";
+import type { LayoutNode } from "./layoutNode";
 
 const BADGE_WIDTH = 96;
 const BADGE_HEIGHT = 32;
@@ -51,10 +52,7 @@ export function layoutVerticalFlow(outline: OutlineNode[]): LayoutNode[] {
     const badgeY = y + (HEADER_HEIGHT - BADGE_HEIGHT) / 2;
     badgeTops.push(badgeY);
 
-    result.push({
-      nodeIds: badgeNode ? [badgeNode.id] : [],
-      text: badgeNode?.text ?? "",
-      depth: 1,
+    result.push(textNode(badgeNode, 1, {
       x: 0,
       y: badgeY,
       width: BADGE_WIDTH,
@@ -65,12 +63,9 @@ export function layoutVerticalFlow(outline: OutlineNode[]): LayoutNode[] {
       // Same slot as the fill, so the label stays legible against both the
       // pale early shades and the dark late ones (style.ts's contrastTextColor).
       contrastBgColorSlot: colorSlot,
-    });
+    }));
 
-    result.push({
-      nodeIds: [step.id],
-      text: step.text,
-      depth: 0,
+    result.push(textNode(step, 0, {
       x: CONTENT_X,
       y: y + (HEADER_HEIGHT - TITLE_HEIGHT) / 2,
       width: CONTENT_WIDTH,
@@ -79,13 +74,10 @@ export function layoutVerticalFlow(outline: OutlineNode[]): LayoutNode[] {
       align: "left",
       fontSize: TITLE_FONT_SIZE,
       fontWeight: "bold",
-    });
+    }));
 
     descNodes.forEach((desc, i) => {
-      result.push({
-        nodeIds: [desc.id],
-        text: desc.text,
-        depth: 2,
+      result.push(textNode(desc, 2, {
         x: CONTENT_X,
         y: y + HEADER_HEIGHT + DESC_GAP_TOP + i * DESC_LINE_HEIGHT,
         width: CONTENT_WIDTH,
@@ -94,7 +86,7 @@ export function layoutVerticalFlow(outline: OutlineNode[]): LayoutNode[] {
         align: "left",
         fontSize: DESC_FONT_SIZE,
         textColorSlot: 2,
-      });
+      }));
     });
 
     const contentHeight = HEADER_HEIGHT + (descNodes.length > 0 ? DESC_GAP_TOP + descNodes.length * DESC_LINE_HEIGHT : 0);
@@ -107,17 +99,14 @@ export function layoutVerticalFlow(outline: OutlineNode[]): LayoutNode[] {
   // node. All badges share the same x (0) and width, so the connector's x is
   // just their shared center.
   for (let i = 0; i < badgeTops.length - 1; i++) {
-    result.push({
-      nodeIds: [],
-      text: "",
-      depth: 0,
+    result.push(decoration({
       x: BADGE_WIDTH / 2,
       y: badgeTops[i] + BADGE_HEIGHT,
       width: 0,
       height: badgeTops[i + 1] - (badgeTops[i] + BADGE_HEIGHT),
       kind: "line",
       arrowhead: true,
-    });
+    }));
   }
 
   return result;

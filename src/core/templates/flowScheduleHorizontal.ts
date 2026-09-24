@@ -1,5 +1,6 @@
 import type { OutlineNode } from "../model/document";
-import type { LayoutNode } from "./treeLayout";
+import { decoration, fixedText, shapeNode, textNode } from "./layoutNode";
+import type { LayoutNode } from "./layoutNode";
 
 const CARD_WIDTH = 220;
 const CARD_MIN_HEIGHT = 300;
@@ -73,10 +74,7 @@ export function layoutFlowScheduleHorizontal(outline: OutlineNode[], title: stri
   if (trimmedTitle) {
     const bandWidth = Math.min(TITLE_BAND_WIDTH, totalWidth || TITLE_BAND_WIDTH);
     const bandX = (totalWidth - bandWidth) / 2;
-    result.push({
-      nodeIds: [],
-      text: trimmedTitle,
-      depth: 0,
+    result.push(fixedText(trimmedTitle, {
       x: bandX,
       y: 0,
       width: bandWidth,
@@ -87,22 +85,19 @@ export function layoutFlowScheduleHorizontal(outline: OutlineNode[], title: stri
       fontSize: TITLE_FONT_SIZE,
       // No textColorSlot override - see flowSchedule.ts's own title for why
       // (reads the same primary color as everything else, not an accent).
-    });
+    }));
 
     const lineY = TITLE_HEIGHT / 2;
     const leftWidth = bandX - TITLE_LINE_GAP;
     if (leftWidth > 0) {
-      result.push({ nodeIds: [], text: "", depth: 0, x: 0, y: lineY, width: leftWidth, height: 0, kind: "line" });
-      result.push({
-        nodeIds: [],
-        text: "",
-        depth: 0,
+      result.push(decoration({ x: 0, y: lineY, width: leftWidth, height: 0, kind: "line" }));
+      result.push(decoration({
         x: bandX + bandWidth + TITLE_LINE_GAP,
         y: lineY,
         width: totalWidth - (bandX + bandWidth + TITLE_LINE_GAP),
         height: 0,
         kind: "line",
-      });
+      }));
     }
 
     y = TITLE_HEIGHT + TITLE_GAP;
@@ -115,29 +110,23 @@ export function layoutFlowScheduleHorizontal(outline: OutlineNode[], title: stri
     // label/description labels drawn on top of it (see regenerateBlockShapes
     // in sync.ts) - same ordering reason as matrix.ts's background square.
     // Unfilled (no fillColorSlot) and undashed (kind "rect"'s own default is
-    // a solid border - see treeLayout.ts's `dashed` doc) - just a rounded
+    // a solid border - see layoutNode.ts's `dashed` doc) - just a rounded
     // outline, matching the reference image's cards.
-    result.push({
-      nodeIds: [step.id],
-      text: "",
-      depth: 0,
+    result.push(shapeNode(step, {
       x,
       y,
       width: CARD_WIDTH,
       height: cardHeight,
       kind: "rect",
       cornerRadius: CORNER_RADIUS,
-    });
+    }));
 
     let cy = y + CARD_PADDING_Y;
     // The number is purely position-derived (like schedule.ts's row number),
     // not tied to any outline node - untracked, always regenerated with the
     // rest of the block on reorder (isFullyRelayoutedPattern/
     // relayoutOrRegenerate in sync.ts).
-    result.push({
-      nodeIds: [],
-      text: stepNumber(i),
-      depth: 0,
+    result.push(fixedText(stepNumber(i), {
       x,
       y: cy,
       width: CARD_WIDTH,
@@ -146,13 +135,10 @@ export function layoutFlowScheduleHorizontal(outline: OutlineNode[], title: stri
       align: "center",
       fontWeight: "bold",
       fontSize: NUMBER_FONT_SIZE,
-    });
+    }));
     cy += NUMBER_HEIGHT + GAP_NUMBER_LABEL;
 
-    result.push({
-      nodeIds: [step.id],
-      text: step.text,
-      depth: 0,
+    result.push(textNode(step, 0, {
       x,
       y: cy,
       width: CARD_WIDTH,
@@ -161,14 +147,11 @@ export function layoutFlowScheduleHorizontal(outline: OutlineNode[], title: stri
       align: "center",
       fontWeight: "bold",
       fontSize: LABEL_FONT_SIZE,
-    });
+    }));
     cy += LABEL_HEIGHT + ICON_GAP;
 
     step.children.forEach((desc, j) => {
-      result.push({
-        nodeIds: [desc.id],
-        text: desc.text,
-        depth: 1,
+      result.push(textNode(desc, 1, {
         x: x + DESC_PADDING_X,
         y: cy + j * DESC_LINE_HEIGHT,
         width: CARD_WIDTH - DESC_PADDING_X * 2,
@@ -176,15 +159,12 @@ export function layoutFlowScheduleHorizontal(outline: OutlineNode[], title: stri
         kind: "label",
         align: "left",
         fontSize: DESC_FONT_SIZE,
-      });
+      }));
     });
 
     if (i < outline.length - 1) {
       const gapX = x + CARD_WIDTH;
-      result.push({
-        nodeIds: [],
-        text: "",
-        depth: 0,
+      result.push(decoration({
         x: gapX + (CONNECTOR_WIDTH - TRIANGLE_SIZE) / 2,
         y: y + cardHeight / 2 - TRIANGLE_SIZE / 2,
         width: TRIANGLE_SIZE,
@@ -192,7 +172,7 @@ export function layoutFlowScheduleHorizontal(outline: OutlineNode[], title: stri
         kind: "polygon",
         points: RIGHT_TRIANGLE_POINTS,
         fillColorSlot: 0,
-      });
+      }));
     }
   });
 

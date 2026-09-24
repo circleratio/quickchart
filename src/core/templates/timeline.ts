@@ -1,5 +1,6 @@
 import type { OutlineNode } from "../model/document";
-import type { LayoutNode } from "./treeLayout";
+import { decoration, fixedText, shapeNode, textNode } from "./layoutNode";
+import type { LayoutNode } from "./layoutNode";
 
 const DOT_SIZE = 18;
 const DOT_GAP = 26;
@@ -40,10 +41,7 @@ export function layoutTimeline(outline: OutlineNode[], title: string): LayoutNod
   if (trimmedTitle) {
     const bandWidth = Math.min(TITLE_BAND_WIDTH, TOTAL_WIDTH);
     const bandX = (TOTAL_WIDTH - bandWidth) / 2;
-    result.push({
-      nodeIds: [],
-      text: trimmedTitle,
-      depth: 0,
+    result.push(fixedText(trimmedTitle, {
       x: bandX,
       y: 0,
       width: bandWidth,
@@ -54,22 +52,19 @@ export function layoutTimeline(outline: OutlineNode[], title: string): LayoutNod
       fontSize: TITLE_FONT_SIZE,
       // No textColorSlot override - see flowSchedule.ts's own title for why
       // (reads the same primary color as everything else, not an accent).
-    });
+    }));
 
     const lineY = TITLE_HEIGHT / 2;
     const leftWidth = bandX - TITLE_LINE_GAP;
     if (leftWidth > 0) {
-      result.push({ nodeIds: [], text: "", depth: 0, x: 0, y: lineY, width: leftWidth, height: 0, kind: "line" });
-      result.push({
-        nodeIds: [],
-        text: "",
-        depth: 0,
+      result.push(decoration({ x: 0, y: lineY, width: leftWidth, height: 0, kind: "line" }));
+      result.push(decoration({
         x: bandX + bandWidth + TITLE_LINE_GAP,
         y: lineY,
         width: TOTAL_WIDTH - (bandX + bandWidth + TITLE_LINE_GAP),
         height: 0,
         kind: "line",
-      });
+      }));
     }
 
     y = TITLE_HEIGHT + TITLE_GAP;
@@ -85,10 +80,7 @@ export function layoutTimeline(outline: OutlineNode[], title: string): LayoutNod
   // event (not one segment per adjacent pair, unlike verticalFlow's badge
   // arrows - doc/spec.md §6.2.7) since the reference image reads as a single
   // uninterrupted axis, not discrete links between stops.
-  result.push({
-    nodeIds: [],
-    text: "",
-    depth: 0,
+  result.push(decoration({
     x: DOT_SIZE / 2,
     y: rowCenterY(0),
     width: 0,
@@ -96,7 +88,7 @@ export function layoutTimeline(outline: OutlineNode[], title: string): LayoutNod
     kind: "line",
     trackStyle: true,
     arrowhead: true,
-  });
+  }));
 
   outline.forEach((event, i) => {
     const cy = rowCenterY(i);
@@ -105,22 +97,16 @@ export function layoutTimeline(outline: OutlineNode[], title: string): LayoutNod
     // The dot has no text of its own - it shares the event's nodeId with the
     // description label below anyway (same convention as horizontalFlow's
     // step circles - §6.2.8), so a click on either selects the same event.
-    result.push({
-      nodeIds: [event.id],
-      text: "",
-      depth: 0,
+    result.push(shapeNode(event, {
       x: 0,
       y: cy - DOT_SIZE / 2,
       width: DOT_SIZE,
       height: DOT_SIZE,
       kind: "ellipse",
       fillColorSlot: 0,
-    });
+    }));
 
-    result.push({
-      nodeIds: timeNode ? [timeNode.id] : [],
-      text: timeNode?.text ?? "",
-      depth: 1,
+    result.push(textNode(timeNode, 1, {
       x: DOT_SIZE + DOT_GAP,
       y: cy - TIME_LABEL_HEIGHT / 2,
       width: TIME_WIDTH,
@@ -129,12 +115,9 @@ export function layoutTimeline(outline: OutlineNode[], title: string): LayoutNod
       align: "left",
       fontWeight: "bold",
       fontSize: TIME_FONT_SIZE,
-    });
+    }));
 
-    result.push({
-      nodeIds: [event.id],
-      text: event.text,
-      depth: 0,
+    result.push(textNode(event, 0, {
       x: DOT_SIZE + DOT_GAP + TIME_WIDTH + CONTENT_GAP,
       y: cy - CONTENT_LABEL_HEIGHT / 2,
       width: CONTENT_WIDTH,
@@ -142,7 +125,7 @@ export function layoutTimeline(outline: OutlineNode[], title: string): LayoutNod
       kind: "label",
       align: "left",
       fontSize: CONTENT_FONT_SIZE,
-    });
+    }));
   });
 
   return result;
