@@ -168,8 +168,6 @@ const DEFAULT_SIZE = 3;
 export const gridMatrixPattern: PatternDefinition = {
   label: "N×Nマトリクス",
   layout: (outline, params) => layoutGridMatrix(outline, stringParam(params, "title")),
-  // Tiles are untracked and their count follows the label counts.
-  restructure: "regenerate",
   // The outline is always exactly its two axes, so both come in at once.
   initialOutline: () => [emptyNode(emptyNodes(DEFAULT_SIZE)), emptyNode(emptyNodes(DEFAULT_SIZE))],
   paramEditors: [TITLE_EDITOR],

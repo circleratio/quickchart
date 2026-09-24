@@ -190,7 +190,6 @@ export const bulletMatrixPattern: PatternDefinition = {
   layout: (outline, params) => layoutBulletMatrix(outline, bulletMatrixColumnHeaders(params)),
   // Column headers are placed above row 0.
   normalizeOrigin: true,
-  restructure: "relayout",
   // A row needs one empty cell per column up front - otherwise it would
   // render with a heading and zero cells, and the generic outline editor has
   // no way to know it should add exactly columnHeaders.length children.

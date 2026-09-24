@@ -26,5 +26,4 @@ export const pyramidPattern: PatternDefinition = {
   label: "ツリー図",
   layout: (outline) => layoutPyramid(outline),
   tree: { direction: "down" },
-  restructure: "relayout",
 };

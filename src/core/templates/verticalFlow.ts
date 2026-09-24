@@ -116,9 +116,6 @@ export function layoutVerticalFlow(outline: OutlineNode[]): LayoutNode[] {
 export const verticalFlowPattern: PatternDefinition = {
   label: "フロー図（縦型）",
   layout: (outline) => layoutVerticalFlow(outline),
-  // The badge-to-badge arrows are untracked shapes whose positions follow
-  // the steps.
-  restructure: "regenerate",
   // A step starts with its badge child (child[0]); description lines
   // (child[1..]) have no fixed count, so only the badge is prefilled.
   newRoot: () => emptyNode(emptyNodes(1)),

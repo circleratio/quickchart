@@ -188,9 +188,6 @@ export const pyramidChartPattern: PatternDefinition = {
   label: "ピラミッド図",
   layout: (outline, params) => layoutPyramidChart(outline, pyramidChartColumnHeaders(params), stringParam(params, "title")),
   normalizeOrigin: true,
-  // A band's taper depends on its index among its siblings, which
-  // relayoutBlock (repositioning only) would leave stale after a reorder.
-  restructure: "regenerate",
   // A row needs its "scale" child plus one empty cell per column up front,
   // for the same reason as bulletMatrix's rows.
   newRoot: (params) => emptyNode(emptyNodes(1 + pyramidChartColumnHeaders(params).length)),

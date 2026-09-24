@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyDocument } from "../model/document";
-import type { Document } from "../model/document";
+import type { Document, OutlineNode, StructuredBlock } from "../model/document";
 import * as sync from "./sync";
 
 function pyramidBlock(doc: Document) {
@@ -1557,5 +1557,75 @@ describe("tree node spacing (reproducing the reported bug: uneven sibling gaps)"
     const cccToDDDGap = DDD.x - (ccc.x + ccc.width);
     const DDDToEEEGap = EEE.x - (DDD.x + DDD.width);
     expect(DDDToEEEGap).toBeCloseTo(cccToDDDGap);
+  });
+});
+
+// A restructure (reorder/indent/outdent) must leave the block looking exactly
+// as a fresh layout of the new outline would: every shape - including those
+// not tied to any outline node (separators, grid lines) and those whose
+// style depends on their position (matrix's badge fills) - in its laid-out
+// place and style. Shapes are compared relative to the block's own top-left,
+// with ids stripped, since a relayout keeps ids and a regenerate doesn't.
+describe("restructure matches a fresh layout of the new outline", () => {
+  type OutlineSpec = [string, OutlineSpec[]?];
+  function outline(specs: OutlineSpec[]): OutlineNode[] {
+    return specs.map(([text, children]) => ({ id: `${text}-id`, text, children: outline(children ?? []) }));
+  }
+
+  function appearance(doc: Document, blockId: string) {
+    const block = doc.structuredBlocks.find((b) => b.id === blockId)!;
+    const shapes = block.generatedShapeIds.map((id) => doc.shapes[id]);
+    const minX = Math.min(...shapes.map((s) => s.x));
+    const minY = Math.min(...shapes.map((s) => s.y));
+    return shapes
+      .map(({ id: _id, zIndex: _z, ...rest }) => ({
+        ...rest,
+        x: Math.round(rest.x - minX),
+        y: Math.round(rest.y - minY),
+      }))
+      .map((s) => JSON.stringify(s))
+      .sort();
+  }
+
+  function expectMatchesFreshLayout(doc: Document, blockId: string) {
+    const block = doc.structuredBlocks.find((b) => b.id === blockId)!;
+    const fresh = sync.replaceOutline(doc, blockId, block.outline);
+    expect(appearance(doc, blockId)).toEqual(appearance(fresh, blockId));
+  }
+
+  function blockWith(pattern: StructuredBlock["pattern"], specs: OutlineSpec[], params: Record<string, unknown> = {}) {
+    const { document, blockId } = sync.addEmptyStructuredBlock(createEmptyDocument(), pattern);
+    return { document: sync.replaceOutline(document, blockId, outline(specs), params), blockId };
+  }
+
+  it("headingBullets: row separators follow rows of different heights", () => {
+    const { document, blockId } = blockWith("headingBullets", [
+      ["A", [["a1"], ["a2"], ["a3"], ["a4"]]],
+      ["B", [["b1"]]],
+      ["C", [["c1"], ["c2"]]],
+    ]);
+    expectMatchesFreshLayout(sync.moveOutlineNode(document, blockId, "A-id", "down"), blockId);
+  });
+
+  it("bulletMatrix: grid lines follow rows of different heights", () => {
+    const { document, blockId } = blockWith(
+      "bulletMatrix",
+      [
+        ["R1", [["cell1", [["t1"], ["t2"], ["t3", [["d1"], ["d2"]]]]]]],
+        ["R2", [["cell2", [["t4"]]]]],
+      ],
+      { columnHeaders: ["列"] },
+    );
+    expectMatchesFreshLayout(sync.moveOutlineNode(document, blockId, "R1-id", "down"), blockId);
+  });
+
+  it("matrix: badge fills follow the quadrant's new position", () => {
+    const { document, blockId } = blockWith("matrix", [["Q1", [["x"]]], ["Q2"], ["Q3"], ["Q4"]]);
+    expectMatchesFreshLayout(sync.moveOutlineNode(document, blockId, "Q1-id", "down"), blockId);
+  });
+
+  it("venn: sets swap places with their elements", () => {
+    const { document, blockId } = blockWith("venn", [["S1", [["共通"], ["x"]]], ["S2", [["共通"]]], ["S3", [["y"]]]]);
+    expectMatchesFreshLayout(sync.moveOutlineNode(document, blockId, "S1-id", "down"), blockId);
   });
 });

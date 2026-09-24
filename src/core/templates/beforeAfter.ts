@@ -225,9 +225,6 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
 export const beforeAfterPattern: PatternDefinition = {
   label: "ビフォーアフター（縦）",
   layout: (outline) => layoutBeforeAfter(outline),
-  // Each column's down-arrow is untracked with an index-derived x, and an
-  // indented topic would be stranded (see timeline).
-  restructure: "regenerate",
   // A topic starts with both its ASIS and TOBE blocks (child[0]/child[1]).
   newRoot: () => emptyNode(emptyNodes(2)),
   // ASIS/TOBE (child[0]/[1]) are locked at both positions, but their own

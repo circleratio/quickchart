@@ -70,21 +70,20 @@ export interface PatternDefinition {
 
   // Set for the tree patterns (pyramid/logicTree), whose positions don't
   // depend on the outline as a whole: adding/deleting a node places or
-  // removes just that node's shape next to a reference shape (keeping every
-  // other shape's manual position/style), and parent-child connector lines
-  // are redrawn from the shapes' actual positions after every structural
-  // edit. `direction` is the tree's growth axis ("down": roots on top,
-  // "right": roots on the left). Every other pattern regenerates all of its
-  // shapes from scratch on add/delete.
+  // removes just that node's shape next to a reference shape, and
+  // indent/outdent/move only moves the existing shapes to their freshly
+  // laid-out positions - either way keeping every other shape's manual
+  // position/style. Parent-child connector lines are redrawn from the
+  // shapes' actual positions after every structural edit. `direction` is the
+  // tree's growth axis ("down": roots on top, "right": roots on the left).
+  //
+  // Every other pattern regenerates all of its shapes from scratch on any
+  // structural edit. Moving shapes in place is only correct when each
+  // outline node has exactly one shape, no untracked shape (`nodeIds: []`)
+  // depends on node order, no shape's size/style depends on its index, and
+  // no node can drop out of the layout by being nested - which only the tree
+  // patterns guarantee.
   tree?: { direction: "down" | "right" };
-
-  // How indent/outdent/move re-places shapes. "relayout" moves the existing
-  // shapes (matched by outline node id) to their freshly laid-out positions,
-  // keeping their ids and styling - only correct when nothing else changes:
-  // no untracked shape (`nodeIds: []`) depends on node order, no shape's own
-  // size/style depends on its index, and no node can drop out of the layout
-  // by being nested. "regenerate" rebuilds every shape from scratch.
-  restructure: "relayout" | "regenerate";
 
   // Set when a node's text determines layout, not just the text of its own
   // shape, so a text edit must regenerate the block instead of patching the

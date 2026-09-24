@@ -192,7 +192,6 @@ export const vennPattern: PatternDefinition = {
   layout: (outline, params) => layoutVenn(outline, vennSetCount(params)),
   // The circle layout is centered on (0, 0).
   normalizeOrigin: true,
-  restructure: "relayout",
   // An element's text decides which set-combination it belongs to, so a text
   // edit can move, split or merge its shape (doc/spec.md §6.2.2).
   regenerateOnTextEdit: "panelAndCanvas",

@@ -143,8 +143,5 @@ export function layoutFlowScheduleHorizontal(outline: OutlineNode[], title: stri
 export const flowScheduleHorizontalPattern: PatternDefinition = {
   label: "フロースケジュール（横）",
   layout: (outline, params) => layoutFlowScheduleHorizontal(outline, stringParam(params, "title")),
-  // Same reasons as flowSchedule: untracked connectors/title rules and
-  // index-derived step numbers.
-  restructure: "regenerate",
   paramEditors: [TITLE_EDITOR],
 };

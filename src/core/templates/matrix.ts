@@ -258,7 +258,6 @@ export const matrixPattern: PatternDefinition = {
   layout: (outline, params) => layoutMatrix(outline, params as MatrixParams),
   // The axis cross/labels/title are laid out around the grid's own top-left.
   normalizeOrigin: true,
-  restructure: "relayout",
   // A matrix always has its 4 quadrants, so a fresh block starts with all of
   // them, empty, rather than growing one quadrant at a time.
   initialOutline: () => emptyNodes(MATRIX_MAX_ROOTS),

@@ -341,14 +341,11 @@ export function layoutCycle(outline: OutlineNode[], title: string, withEntry: bo
   return [...shapes, ...labels];
 }
 
-// Every arrow's angle depends on the step count and its own index, and an
-// indented step's arrow would be stranded (see timeline), so both variants
-// regenerate on restructure. The ring is centered on (CENTER_X, CENTER_Y).
+// The ring is centered on (CENTER_X, CENTER_Y), hence normalizeOrigin.
 export const cyclePattern: PatternDefinition = {
   label: "サイクル図（円のみ）",
   layout: (outline, params) => layoutCycle(outline, stringParam(params, "title"), false),
   normalizeOrigin: true,
-  restructure: "regenerate",
   paramEditors: [TITLE_EDITOR],
 };
 
@@ -356,7 +353,6 @@ export const cycleWithEntryPattern: PatternDefinition = {
   label: "サイクル図（導入部あり）",
   layout: (outline, params) => layoutCycle(outline, stringParam(params, "title"), true),
   normalizeOrigin: true,
-  restructure: "regenerate",
   paramEditors: [TITLE_EDITOR],
   nodeRule: ({ depth, index }) => (depth === 0 && index === 0 ? { placeholder: "導入部(ループに入る前の段階)" } : {}),
 };

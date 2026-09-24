@@ -107,10 +107,6 @@ export function layoutTimeline(outline: OutlineNode[], title: string): LayoutNod
 export const timelinePattern: PatternDefinition = {
   label: "タイムライン",
   layout: (outline, params) => layoutTimeline(outline, stringParam(params, "title")),
-  // Indenting an event under another drops it out of the top-level loop;
-  // relayoutBlock never removes shapes, so its old ones would be stranded.
-  // The shared track line's span also follows the event count.
-  restructure: "regenerate",
   // An event starts with its time child (child[0]).
   newRoot: () => emptyNode(emptyNodes(1)),
   paramEditors: [TITLE_EDITOR],

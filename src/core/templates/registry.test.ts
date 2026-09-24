@@ -43,11 +43,9 @@ describe("pattern registry", () => {
     expect(() => definition.layout(outline, params)).not.toThrow();
   });
 
-  it("gives the tree patterns a growth direction and relayout-on-restructure", () => {
+  it("gives only the tree patterns a growth direction", () => {
     expect(patternOf("pyramid").tree?.direction).toBe("down");
     expect(patternOf("logicTree").tree?.direction).toBe("right");
-    for (const id of PATTERN_IDS) {
-      if (patternOf(id).tree) expect(patternOf(id).restructure).toBe("relayout");
-    }
+    expect(PATTERN_IDS.filter((id) => patternOf(id).tree)).toEqual(["pyramid", "logicTree"]);
   });
 });

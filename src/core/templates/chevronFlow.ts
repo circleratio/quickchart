@@ -222,9 +222,6 @@ export function layoutChevronFlow(outline: OutlineNode[]): LayoutNode[] {
 export const chevronFlowPattern: PatternDefinition = {
   label: "フローチャート",
   layout: (outline) => layoutChevronFlow(outline),
-  // "Step N" labels are untracked and index-derived, and an indented step
-  // would be stranded (see timeline).
-  restructure: "regenerate",
   // A step starts with its duration child (child[0]); bullets (child[1..])
   // have no fixed count.
   newRoot: () => emptyNode(emptyNodes(1)),

@@ -594,8 +594,8 @@ function visualTopLeft(shape: Shape): { x: number; y: number } {
 // Recomputes every generated shape's position from a fresh layout of
 // `newOutline`, keeping each shape's own id (and any style customization) by
 // matching on templateNodeIds. Used after restructuring (indent/outdent/move)
-// where the tree shape changed but no nodes were added or removed, for
-// patterns whose PatternDefinition.restructure is "relayout".
+// where the tree shape changed but no nodes were added or removed - only for
+// the tree patterns (see PatternDefinition.tree for why).
 function relayoutBlock(doc: Document, block: StructuredBlock, newOutline: OutlineNode[]): Document {
   const origin = originOfBlock(doc, block);
   const layoutByNodeId = new Map<string, LayoutNode>();
@@ -615,16 +615,14 @@ function relayoutBlock(doc: Document, block: StructuredBlock, newOutline: Outlin
   return withBlock({ ...doc, shapes }, block.id, (b) => ({ ...b, outline: newOutline }));
 }
 
-// Indent/outdent/move: re-places shapes as the pattern's
-// PatternDefinition.restructure says, then resyncs the tree patterns'
-// connector lines - relayoutBlock repositions every ordinary node shape but,
-// having no templateNodeIds, never touches connector shapes, which would
-// otherwise keep pointing at their pre-restructure positions.
+// Indent/outdent/move: the tree patterns move their existing shapes in
+// place, every other pattern regenerates (see PatternDefinition.tree), then
+// the tree patterns' connector lines are resynced - relayoutBlock
+// repositions every ordinary node shape but, having no templateNodeIds,
+// never touches connector shapes, which would otherwise keep pointing at
+// their pre-restructure positions.
 function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline: OutlineNode[]): Document {
-  const next =
-    patternOf(block.pattern).restructure === "regenerate"
-      ? regenerateBlockShapes(doc, block, newOutline)
-      : relayoutBlock(doc, block, newOutline);
+  const next = patternOf(block.pattern).tree ? relayoutBlock(doc, block, newOutline) : regenerateBlockShapes(doc, block, newOutline);
   return regenerateTreeConnectors(next, block.id);
 }
 

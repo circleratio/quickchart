@@ -320,9 +320,6 @@ export const schedulePattern: PatternDefinition = {
   layout: (outline, params) => layoutSchedule(outline, scheduleParams(params)),
   // Month headers and milestones are placed above row 0.
   normalizeOrigin: true,
-  // Headers, grid lines, milestone markers and dependency connectors are all
-  // untracked shapes whose positions follow the rows.
-  restructure: "regenerate",
   // A bar's date fields have no shape of their own - editing one decides
   // whether and where its bar renders.
   regenerateOnTextEdit: "panel",

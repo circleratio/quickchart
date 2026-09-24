@@ -73,8 +73,5 @@ export function layoutFlowSchedule(outline: OutlineNode[], title: string): Layou
 export const flowSchedulePattern: PatternDefinition = {
   label: "フロースケジュール（縦）",
   layout: (outline, params) => layoutFlowSchedule(outline, stringParam(params, "title")),
-  // Row separators/title rules are untracked, and each heading's "NN | "
-  // number depends on its index.
-  restructure: "regenerate",
   paramEditors: [TITLE_EDITOR],
 };

@@ -26,5 +26,4 @@ export const logicTreePattern: PatternDefinition = {
   label: "ロジックツリー図",
   layout: (outline) => layoutLogicTree(outline),
   tree: { direction: "right" },
-  restructure: "relayout",
 };
