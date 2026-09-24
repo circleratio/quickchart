@@ -1,7 +1,7 @@
 import type { OutlineNode } from "../model/document";
 import { decoration, fixedText, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
-import { emptyNode, emptyNodes, stringParam } from "./patternDefinition";
+import { TITLE_EDITOR, emptyNode, emptyNodes, stringParam } from "./patternDefinition";
 import type { PatternDefinition } from "./patternDefinition";
 
 const TILE_WIDTH = 220;
@@ -166,9 +166,21 @@ export function layoutGridMatrix(outline: OutlineNode[], title: string): LayoutN
 const DEFAULT_SIZE = 3;
 
 export const gridMatrixPattern: PatternDefinition = {
+  label: "N×Nマトリクス",
   layout: (outline, params) => layoutGridMatrix(outline, stringParam(params, "title")),
   // Tiles are untracked and their count follows the label counts.
   restructure: "regenerate",
   // The outline is always exactly its two axes, so both come in at once.
   initialOutline: () => [emptyNode(emptyNodes(DEFAULT_SIZE)), emptyNode(emptyNodes(DEFAULT_SIZE))],
+  paramEditors: [TITLE_EDITOR],
+  // Always exactly its two axes.
+  rootLimit: () => 2,
+  // The axes can't be moved, deleted or nested; their labels stay
+  // reorderable/deletable but never nest.
+  nodeRule: ({ depth, index, rootIndex }) => {
+    if (depth === 0) {
+      return { fixed: true, noIndent: true, noAddSibling: true, placeholder: index === 0 ? "横軸の名前(例: 時間軸)" : "縦軸の名前(例: 現在の事業との近さ)" };
+    }
+    return { noIndent: true, noAddChild: true, placeholder: rootIndex === 0 ? "列の見出し(左から。例: 短期)" : "行の見出し(上から。例: 遠)" };
+  },
 };

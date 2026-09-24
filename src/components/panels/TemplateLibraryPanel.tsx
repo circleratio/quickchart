@@ -3,12 +3,19 @@ import { useDocumentStore } from "../../core/store/documentStore";
 import { useStructuredEditorStore } from "../../core/store/structuredEditorStore";
 import { useUserTemplateRefreshStore } from "../../core/store/userTemplateStore";
 import type { StructuredBlock } from "../../core/model/document";
+import { patternOf } from "../../core/templates/registry";
 import type { UserTemplate } from "../../core/model/userTemplate";
 import { deleteUserTemplate, errorMessageFor, getUserTemplates } from "../../core/io/tauriApi";
 
 type LeafPattern = { id: StructuredBlock["pattern"]; label: string; available: boolean };
 
 type PatternEntry = ({ kind: "leaf" } & LeafPattern) | { kind: "group"; label: string; children: LeafPattern[] };
+
+// A pattern's library entry, labeled with its own display name
+// (PatternDefinition.label).
+function leaf(id: StructuredBlock["pattern"]): LeafPattern {
+  return { id, label: patternOf(id).label, available: true };
+}
 
 // The "スケジュール" group bundles the pattern's own vertical/horizontal
 // variants as a flat submenu rather than nesting a further cascade level
@@ -20,46 +27,35 @@ const PATTERN_ENTRIES: PatternEntry[] = [
   {
     kind: "group",
     label: "ツリー構造",
-    children: [
-      { id: "pyramid", label: "ツリー図", available: true },
-      { id: "logicTree", label: "ロジックツリー図", available: true },
-      { id: "headingBullets", label: "見出し付き箇条書き", available: true },
-    ],
+    children: [leaf("pyramid"), leaf("logicTree"), leaf("headingBullets")],
   },
   {
     kind: "group",
     label: "マトリクス構造",
-    children: [
-      { id: "matrix", label: "４象限マトリクス", available: true },
-      { id: "gridMatrix", label: "N×Nマトリクス", available: true },
-      { id: "bulletMatrix", label: "箇条書きマトリクス", available: true },
-    ],
+    children: [leaf("matrix"), leaf("gridMatrix"), leaf("bulletMatrix")],
   },
   {
     kind: "group",
     label: "スケジュール",
     children: [
-      { id: "schedule", label: "ガントチャート", available: true },
-      { id: "verticalFlow", label: "フロー図（縦型）", available: true },
-      { id: "horizontalFlow", label: "フロー図（横型）", available: true },
-      { id: "flowSchedule", label: "フロースケジュール（縦）", available: true },
-      { id: "flowScheduleHorizontal", label: "フロースケジュール（横）", available: true },
-      { id: "timeline", label: "タイムライン", available: true },
-      { id: "chevronFlow", label: "フローチャート", available: true },
+      leaf("schedule"),
+      leaf("verticalFlow"),
+      leaf("horizontalFlow"),
+      leaf("flowSchedule"),
+      leaf("flowScheduleHorizontal"),
+      leaf("timeline"),
+      leaf("chevronFlow"),
     ],
   },
   {
     kind: "group",
     label: "サイクル図",
-    children: [
-      { id: "cycleWithEntry", label: "サイクル図（導入部あり）", available: true },
-      { id: "cycle", label: "サイクル図（円のみ）", available: true },
-    ],
+    children: [leaf("cycleWithEntry"), leaf("cycle")],
   },
-  { kind: "leaf", id: "venn", label: "ベン図", available: true },
-  { kind: "leaf", id: "pyramidChart", label: "ピラミッド図", available: true },
-  { id: "beforeAfter", label: "ビフォーアフター（縦）", available: true, kind: "leaf" },
-  { id: "beforeAfterHorizontal", label: "ビフォーアフター（横）", available: true, kind: "leaf" },
+  { kind: "leaf", ...leaf("venn") },
+  { kind: "leaf", ...leaf("pyramidChart") },
+  { kind: "leaf", ...leaf("beforeAfter") },
+  { kind: "leaf", ...leaf("beforeAfterHorizontal") },
 ];
 
 interface TemplateLibraryPanelProps {

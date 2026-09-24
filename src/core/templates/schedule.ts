@@ -316,6 +316,7 @@ function emptyBar(): OutlineNode {
 }
 
 export const schedulePattern: PatternDefinition = {
+  label: "ガントチャート",
   layout: (outline, params) => layoutSchedule(outline, scheduleParams(params)),
   // Month headers and milestones are placed above row 0.
   normalizeOrigin: true,
@@ -329,4 +330,6 @@ export const schedulePattern: PatternDefinition = {
   // bar-shaped to expand into; a new child of a row is a new bar.
   newRoot: () => emptyNode([emptyBar()]),
   newChild: (outline, parentNodeId) => (outline.some((row) => row.id === parentNodeId) ? emptyBar() : undefined),
+  // Bars need date fields and a connects-to picker (doc/spec.md §6.2.6).
+  customEditor: "schedule",
 };

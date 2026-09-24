@@ -2,7 +2,7 @@ import type { OutlineNode } from "../model/document";
 import type { ThemeColorSlot } from "../model/style";
 import { decoration, fixedText, shapeNode, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
-import { emptyNode, emptyNodes, stringListParam, stringParam } from "./patternDefinition";
+import { LOCKED_LEAF, TITLE_EDITOR, emptyNode, emptyNodes, stringListParam, stringParam } from "./patternDefinition";
 import type { PatternDefinition, RawParams } from "./patternDefinition";
 
 const PYRAMID_WIDTH = 260;
@@ -185,6 +185,7 @@ export function pyramidChartColumnHeaders(params: RawParams): string[] {
 }
 
 export const pyramidChartPattern: PatternDefinition = {
+  label: "ピラミッド図",
   layout: (outline, params) => layoutPyramidChart(outline, pyramidChartColumnHeaders(params), stringParam(params, "title")),
   normalizeOrigin: true,
   // A band's taper depends on its index among its siblings, which
@@ -206,4 +207,7 @@ export const pyramidChartPattern: PatternDefinition = {
       })),
     };
   },
+  paramEditors: [TITLE_EDITOR, { kind: "list", key: "columnHeaders", heading: "列見出し" }],
+  // child[0] (scale) and child[1..] (cells) are position-aligned leaf values.
+  nodeRule: ({ depth }) => (depth === 1 ? LOCKED_LEAF : {}),
 };

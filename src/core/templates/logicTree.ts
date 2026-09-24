@@ -23,6 +23,7 @@ export function layoutLogicTree(outline: OutlineNode[]): LayoutNode[] {
 
 // ロジックツリー (doc/spec.md §6.2).
 export const logicTreePattern: PatternDefinition = {
+  label: "ロジックツリー図",
   layout: (outline) => layoutLogicTree(outline),
   tree: { direction: "right" },
   restructure: "relayout",

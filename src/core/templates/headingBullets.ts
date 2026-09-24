@@ -44,6 +44,7 @@ export function layoutHeadingBullets(outline: OutlineNode[]): LayoutNode[] {
 }
 
 export const headingBulletsPattern: PatternDefinition = {
+  label: "見出し付き箇条書き",
   layout: (outline) => layoutHeadingBullets(outline),
   restructure: "relayout",
 };

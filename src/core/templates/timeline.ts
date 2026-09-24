@@ -2,7 +2,7 @@ import type { OutlineNode } from "../model/document";
 import { decoration, shapeNode, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
 import { ruledTitle } from "./parts/ruledTitle";
-import { emptyNode, emptyNodes, stringParam } from "./patternDefinition";
+import { LOCKED_LEAF, TITLE_EDITOR, emptyNode, emptyNodes, stringParam } from "./patternDefinition";
 import type { PatternDefinition } from "./patternDefinition";
 
 const DOT_SIZE = 18;
@@ -105,6 +105,7 @@ export function layoutTimeline(outline: OutlineNode[], title: string): LayoutNod
 }
 
 export const timelinePattern: PatternDefinition = {
+  label: "タイムライン",
   layout: (outline, params) => layoutTimeline(outline, stringParam(params, "title")),
   // Indenting an event under another drops it out of the top-level loop;
   // relayoutBlock never removes shapes, so its old ones would be stranded.
@@ -112,4 +113,7 @@ export const timelinePattern: PatternDefinition = {
   restructure: "regenerate",
   // An event starts with its time child (child[0]).
   newRoot: () => emptyNode(emptyNodes(1)),
+  paramEditors: [TITLE_EDITOR],
+  // The time label (child[0]) is locked.
+  nodeRule: ({ depth, index }) => (depth === 1 && index === 0 ? { ...LOCKED_LEAF, placeholder: "時刻(例: 9:00)" } : {}),
 };

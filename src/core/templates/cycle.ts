@@ -4,7 +4,7 @@ import type { ThemeColorSlot } from "../model/style";
 import { fixedText, shapeNode, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
 import { polygonFromAbsolute } from "./parts/polygon";
-import { stringParam } from "./patternDefinition";
+import { TITLE_EDITOR, stringParam } from "./patternDefinition";
 import type { PatternDefinition } from "./patternDefinition";
 
 // Ring geometry. The ring's center is (CENTER_X, CENTER_Y) in layout
@@ -345,13 +345,18 @@ export function layoutCycle(outline: OutlineNode[], title: string, withEntry: bo
 // indented step's arrow would be stranded (see timeline), so both variants
 // regenerate on restructure. The ring is centered on (CENTER_X, CENTER_Y).
 export const cyclePattern: PatternDefinition = {
+  label: "サイクル図（円のみ）",
   layout: (outline, params) => layoutCycle(outline, stringParam(params, "title"), false),
   normalizeOrigin: true,
   restructure: "regenerate",
+  paramEditors: [TITLE_EDITOR],
 };
 
 export const cycleWithEntryPattern: PatternDefinition = {
+  label: "サイクル図（導入部あり）",
   layout: (outline, params) => layoutCycle(outline, stringParam(params, "title"), true),
   normalizeOrigin: true,
   restructure: "regenerate",
+  paramEditors: [TITLE_EDITOR],
+  nodeRule: ({ depth, index }) => (depth === 0 && index === 0 ? { placeholder: "導入部(ループに入る前の段階)" } : {}),
 };

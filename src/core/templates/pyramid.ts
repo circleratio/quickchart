@@ -23,6 +23,7 @@ export function layoutPyramid(outline: OutlineNode[]): LayoutNode[] {
 
 // ツリー図 (doc/spec.md §6.2).
 export const pyramidPattern: PatternDefinition = {
+  label: "ツリー図",
   layout: (outline) => layoutPyramid(outline),
   tree: { direction: "down" },
   restructure: "relayout",

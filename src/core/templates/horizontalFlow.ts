@@ -110,6 +110,7 @@ export function layoutHorizontalFlow(outline: OutlineNode[]): LayoutNode[] {
 }
 
 export const horizontalFlowPattern: PatternDefinition = {
+  label: "フロー図（横型）",
   layout: (outline) => layoutHorizontalFlow(outline),
   // The circle-to-circle arrows are untracked, and each circle's fill/dash
   // depends on its index.

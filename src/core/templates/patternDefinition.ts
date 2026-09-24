@@ -7,10 +7,59 @@ export type PatternId = StructuredBlock["pattern"];
 // project files; each pattern parses what it needs out of it.
 export type RawParams = Record<string, unknown>;
 
-// Everything sync.ts needs to know about one pattern, so adding a pattern
-// means writing its layout file and registering it (registry.ts) rather than
-// threading its id through sync.ts's edit operations.
+// One field of a "fields" params editor.
+export interface ParamField {
+  key: string;
+  label: string;
+  placeholder?: string;
+}
+
+// A params editor shown above/below the outline in the structured text panel
+// (StructuredTextPanel.tsx renders each kind). Every edit goes through
+// sync.ts's updateBlockParams.
+export type ParamEditor =
+  // Free-text fields under one heading, each committed on blur (a title,
+  // axis labels, column labels, ...).
+  | { kind: "fields"; heading: string; fields: ParamField[]; placement?: "aboveOutline" | "belowOutline" }
+  // A growable list of strings (column headers).
+  | { kind: "list"; key: string; heading: string }
+  // A radio choice among numbers (venn's set count).
+  | { kind: "choice"; key: string; label: string; options: number[]; defaultValue: number };
+
+// How the outline editor treats one node, by its position in the outline.
+// Position-based children (a step's badge, a row's cells, ...) are locked in
+// place so the generic editor can't shift the positions that give them their
+// meaning.
+export interface OutlineNodeRule {
+  // Can't be moved up/down or deleted.
+  fixed?: boolean;
+  // Tab/Shift+Tab (indent/outdent) do nothing.
+  noIndent?: boolean;
+  // Enter doesn't add a sibling after it.
+  noAddSibling?: boolean;
+  // No "+子" (add child) button.
+  noAddChild?: boolean;
+  placeholder?: string;
+  // Shown instead of a text input, for a node whose own text is unused.
+  staticLabel?: string;
+}
+
+export interface OutlineNodeContext {
+  depth: number;
+  // Index among its siblings.
+  index: number;
+  // Index of the root (depth-0) node this node sits under.
+  rootIndex: number;
+}
+
+// Everything the rest of the app needs to know about one pattern, so adding a
+// pattern means writing its layout file and registering it (registry.ts)
+// rather than threading its id through sync.ts's edit operations and the
+// structured text panel.
 export interface PatternDefinition {
+  // Display name (pattern library, structured text panel header).
+  label: string;
+
   // Lays out the whole block from its outline and stored params.
   layout(outline: OutlineNode[], params: RawParams): LayoutNode[];
 
@@ -61,7 +110,34 @@ export interface PatternDefinition {
   // is what the caller changed, so a pattern can react only to the keys it
   // cares about. Omitted: the merged params are stored as-is.
   onParamsChange?(outline: OutlineNode[], params: RawParams, patch: RawParams): { outline: OutlineNode[]; params: RawParams };
+
+  // --- Structured text panel ---
+
+  // Params as the pattern reads them (defaults, legacy fallbacks), for
+  // showing their current values in paramEditors. Omitted: stored as-is.
+  readParams?(params: RawParams): RawParams;
+  paramEditors?: ParamEditor[];
+  // Max root count; the editor stops adding roots there. Omitted: no limit.
+  rootLimit?(params: RawParams): number;
+  // Shown once rootLimit is reached.
+  rootLimitNote?: string;
+  // Parses the bulk-import text into an outline (plus any params the text
+  // carries). Omitted: the plain "- item" outline syntax (outlineParser.ts).
+  importText?(text: string): { outline: OutlineNode[]; params?: RawParams };
+  importPlaceholder?: string;
+  // Set for a pattern whose outline needs a dedicated editor instead of the
+  // generic tree (StructuredTextPanel.tsx picks it by this name).
+  customEditor?: "schedule";
+  nodeRule?(context: OutlineNodeContext): OutlineNodeRule;
 }
+
+// The single-field title editor shared by every pattern with a
+// params.title.
+export const TITLE_EDITOR: ParamEditor = { kind: "fields", heading: "タイトル", fields: [{ key: "title", label: "見出し" }] };
+
+// Rule for a position-based child whose own text is a leaf value: locked in
+// place, with nothing to add around or under it.
+export const LOCKED_LEAF: OutlineNodeRule = { fixed: true, noIndent: true, noAddSibling: true, noAddChild: true };
 
 export function emptyNode(children: OutlineNode[] = []): OutlineNode {
   return { id: uuidv4(), text: "", children };

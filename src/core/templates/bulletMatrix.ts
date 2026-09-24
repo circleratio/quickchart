@@ -3,6 +3,7 @@ import { decoration, fixedText, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
 import { emptyNode, emptyNodes, stringListParam } from "./patternDefinition";
 import type { PatternDefinition, RawParams } from "./patternDefinition";
+import { parseBulletMatrixMarkdown } from "./bulletMatrixParser";
 
 const ROW_HEADER_WIDTH = 160;
 const COLUMN_WIDTH = 380;
@@ -185,6 +186,7 @@ export function bulletMatrixColumnHeaders(params: RawParams): string[] {
 }
 
 export const bulletMatrixPattern: PatternDefinition = {
+  label: "箇条書きマトリクス",
   layout: (outline, params) => layoutBulletMatrix(outline, bulletMatrixColumnHeaders(params)),
   // Column headers are placed above row 0.
   normalizeOrigin: true,
@@ -208,4 +210,25 @@ export const bulletMatrixPattern: PatternDefinition = {
       })),
     };
   },
+  paramEditors: [{ kind: "list", key: "columnHeaders", heading: "列見出し" }],
+  // Markdown with a header table for the columns (bulletMatrixParser.ts).
+  importText: (text) => {
+    const parsed = parseBulletMatrixMarkdown(text);
+    return { outline: parsed.outline, params: { columnHeaders: parsed.columnHeaders } };
+  },
+  importPlaceholder:
+    "| 施策領域 | 列見出し1 | 列見出し2 |\n" +
+    "|---|---|---|\n" +
+    "| 行1 | A1 | B1 |\n\n" +
+    "## 行1\n\n" +
+    "### A1\n\n" +
+    "- **タイトル**\n" +
+    "  - 詳細\n\n" +
+    "### B1\n\n" +
+    "- **タイトル**\n" +
+    "  - 詳細",
+  // A cell's own text is never read by the layout (its position IS its
+  // column), so it gets no input and can't be moved or deleted on its own -
+  // only its title/detail children (added via "+子") are real content.
+  nodeRule: ({ depth }) => (depth === 1 ? { fixed: true, staticLabel: "セル(+子でタイトルを追加)" } : {}),
 };

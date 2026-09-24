@@ -223,10 +223,18 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
 }
 
 export const beforeAfterPattern: PatternDefinition = {
+  label: "ビフォーアフター（縦）",
   layout: (outline) => layoutBeforeAfter(outline),
   // Each column's down-arrow is untracked with an index-derived x, and an
   // indented topic would be stranded (see timeline).
   restructure: "regenerate",
   // A topic starts with both its ASIS and TOBE blocks (child[0]/child[1]).
   newRoot: () => emptyNode(emptyNodes(2)),
+  // ASIS/TOBE (child[0]/[1]) are locked at both positions, but their own
+  // text is the headline and their children are free content.
+  nodeRule: ({ depth, index }) => {
+    if (depth === 0) return { placeholder: "バッジ(例: 現場の悩み)" };
+    if (depth === 1) return { fixed: true, noIndent: true, noAddSibling: true, placeholder: index === 0 ? "AS-IS(見出し)" : "TO-BE(見出し)" };
+    return {};
+  },
 };

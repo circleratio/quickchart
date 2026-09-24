@@ -254,6 +254,7 @@ export function layoutMatrix(outline: OutlineNode[], params: MatrixParams = {}):
 }
 
 export const matrixPattern: PatternDefinition = {
+  label: "４象限マトリクス",
   layout: (outline, params) => layoutMatrix(outline, params as MatrixParams),
   // The axis cross/labels/title are laid out around the grid's own top-left.
   normalizeOrigin: true,
@@ -268,4 +269,23 @@ export const matrixPattern: PatternDefinition = {
     const { axisXLabel: _x, axisYLabel: _y, _axisShapeIds: _ids, ...rest } = params;
     return { outline, params: { ...rest, ...matrixParams(params) } };
   },
+  readParams: (params) => matrixParams(params),
+  paramEditors: [
+    {
+      kind: "fields",
+      heading: "タイトル・軸ラベル",
+      placement: "belowOutline",
+      fields: [
+        { key: "title", label: "タイトル", placeholder: "例: 人材活用のための分類" },
+        { key: "axisTop", label: "上端", placeholder: "例: 創造" },
+        { key: "axisBottom", label: "下端", placeholder: "例: 運用" },
+        { key: "axisLeft", label: "左端", placeholder: "例: 個人" },
+        { key: "axisRight", label: "右端", placeholder: "例: 組織" },
+      ],
+    },
+  ],
+  // Fixed at 4 quadrants - the UI stops there, and layoutMatrix ignores any
+  // excess as a defensive backstop.
+  rootLimit: () => MATRIX_MAX_ROOTS,
+  rootLimitNote: "マトリクスは4象限までです。",
 };

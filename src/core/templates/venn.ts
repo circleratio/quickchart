@@ -188,6 +188,7 @@ export function vennSetCount(params: RawParams): number {
 }
 
 export const vennPattern: PatternDefinition = {
+  label: "ベン図",
   layout: (outline, params) => layoutVenn(outline, vennSetCount(params)),
   // The circle layout is centered on (0, 0).
   normalizeOrigin: true,
@@ -203,4 +204,11 @@ export const vennPattern: PatternDefinition = {
     const setCount = vennSetCount(params);
     return { outline: outline.slice(0, setCount), params: { ...params, setCount } };
   },
+  paramEditors: [
+    { kind: "choice", key: "setCount", label: "集合数", options: [2, 3], defaultValue: VENN_MAX_SETS },
+  ],
+  // One root per set - the UI stops at setCount, and layoutVenn ignores any
+  // excess as a defensive backstop.
+  rootLimit: (params) => vennSetCount(params),
+  rootLimitNote: "設定した集合数までです。",
 };

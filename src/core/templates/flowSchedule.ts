@@ -4,7 +4,7 @@ import { headingRows } from "./parts/headingRows";
 import { lineStack, lineStackHeight } from "./parts/lineStack";
 import { stepNumber } from "./parts/numbering";
 import { ruledTitle } from "./parts/ruledTitle";
-import { stringParam } from "./patternDefinition";
+import { TITLE_EDITOR, stringParam } from "./patternDefinition";
 import type { PatternDefinition } from "./patternDefinition";
 
 const HEADING_WIDTH = 220;
@@ -71,8 +71,10 @@ export function layoutFlowSchedule(outline: OutlineNode[], title: string): Layou
 }
 
 export const flowSchedulePattern: PatternDefinition = {
+  label: "フロースケジュール（縦）",
   layout: (outline, params) => layoutFlowSchedule(outline, stringParam(params, "title")),
   // Row separators/title rules are untracked, and each heading's "NN | "
   // number depends on its index.
   restructure: "regenerate",
+  paramEditors: [TITLE_EDITOR],
 };

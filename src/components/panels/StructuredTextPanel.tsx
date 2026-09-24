@@ -4,78 +4,21 @@ import { useDocumentStore } from "../../core/store/documentStore";
 import { useSelectionStore } from "../../core/store/selectionStore";
 import { useStructuredEditorStore } from "../../core/store/structuredEditorStore";
 import { parseOutline } from "../../core/templates/outlineParser";
-import { parseBulletMatrixMarkdown } from "../../core/templates/bulletMatrixParser";
-import { bulletMatrixColumnHeaders } from "../../core/templates/bulletMatrix";
-import { MATRIX_MAX_ROOTS, matrixParams } from "../../core/templates/matrix";
-import type { MatrixParams } from "../../core/templates/matrix";
-import { VENN_MAX_SETS, VENN_MIN_SETS } from "../../core/templates/venn";
-import { stringParam } from "../../core/templates/patternDefinition";
-import { pyramidChartColumnHeaders } from "../../core/templates/pyramidChart";
+import { stringListParam } from "../../core/templates/patternDefinition";
+import type { OutlineNodeRule, ParamEditor, ParamField, PatternDefinition } from "../../core/templates/patternDefinition";
+import { patternOf } from "../../core/templates/registry";
 import { scheduleParams } from "../../core/templates/schedule";
 import type { Milestone } from "../../core/templates/schedule";
 import type { OutlineNode, StructuredBlock } from "../../core/model/document";
 
-const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
-  pyramid: "ツリー図",
-  logicTree: "ロジックツリー図",
-  matrix: "４象限マトリクス",
-  venn: "ベン図",
-  headingBullets: "見出し付き箇条書き",
-  bulletMatrix: "箇条書きマトリクス",
-  pyramidChart: "ピラミッド図",
-  schedule: "ガントチャート",
-  verticalFlow: "フロー図（縦型）",
-  horizontalFlow: "フロー図（横型）",
-  flowSchedule: "フロースケジュール（縦）",
-  flowScheduleHorizontal: "フロースケジュール（横）",
-  timeline: "タイムライン",
-  beforeAfter: "ビフォーアフター（縦）",
-  beforeAfterHorizontal: "ビフォーアフター（横）",
-  chevronFlow: "フローチャート",
-  cycle: "サイクル図（円のみ）",
-  cycleWithEntry: "サイクル図（導入部あり）",
-  gridMatrix: "N×Nマトリクス",
-};
-
-const BULLET_MATRIX_IMPORT_PLACEHOLDER =
-  "| 施策領域 | 列見出し1 | 列見出し2 |\n" +
-  "|---|---|---|\n" +
-  "| 行1 | A1 | B1 |\n\n" +
-  "## 行1\n\n" +
-  "### A1\n\n" +
-  "- **タイトル**\n" +
-  "  - 詳細\n\n" +
-  "### B1\n\n" +
-  "- **タイトル**\n" +
-  "  - 詳細";
-
-// beforeAfterHorizontal's two column headers (doc/spec.md §6.2.13) - a fixed
-// pair rather than bulletMatrix's/pyramidChart's dynamic list, since this
-// pattern always has exactly a "before" and an "after" column.
-function beforeAfterHorizontalLabels(params: Record<string, unknown>): { beforeLabel: string; afterLabel: string } {
-  return { beforeLabel: stringParam(params, "beforeLabel"), afterLabel: stringParam(params, "afterLabel") };
-}
-
-// Matrix is fixed at 4 quadrants; Venn's root count follows params.setCount
-// (2-3). Other patterns have no root limit. See doc/spec.md §6.2.1/§6.2.2 -
-// the UI is expected to prevent exceeding these, with matrix.ts/venn.ts's own
-// layout functions ignoring any excess as a defensive backstop.
-function rootLimitFor(block: StructuredBlock): number {
-  if (block.pattern === "matrix") return MATRIX_MAX_ROOTS;
-  // gridMatrix is always exactly its horizontal + vertical axis (gridMatrix.ts).
-  if (block.pattern === "gridMatrix") return 2;
-  if (block.pattern === "venn") {
-    const raw = block.params.setCount;
-    return typeof raw === "number" ? raw : VENN_MAX_SETS;
-  }
-  return Infinity;
-}
-
+// Everything pattern-specific in this panel - the header label, which params
+// editors to show, the root limit, bulk-import format and how each outline
+// node may be edited - comes from the pattern's PatternDefinition
+// (core/templates/registry.ts).
 export function StructuredTextPanel() {
   const document = useDocumentStore((s) => s.document);
   const addFirstOutlineNode = useDocumentStore((s) => s.addFirstOutlineNode);
   const replaceOutline = useDocumentStore((s) => s.replaceOutline);
-  const updateBlockParams = useDocumentStore((s) => s.updateBlockParams);
 
   const activeBlockId = useStructuredEditorStore((s) => s.activeBlockId);
   const setActiveBlockId = useStructuredEditorStore((s) => s.setActiveBlockId);
@@ -99,113 +42,43 @@ export function StructuredTextPanel() {
   const block = activeBlockId ? document.structuredBlocks.find((b) => b.id === activeBlockId) : undefined;
   if (!block) return null;
 
-  const rootLimit = rootLimitFor(block);
-  const atRootLimit = block.outline.length >= rootLimit;
+  const definition = patternOf(block.pattern);
+  const header = (
+    <div className="structured-text-panel-header">
+      <h3>階層テキスト({definition.label})</h3>
+      <button type="button" onClick={() => setActiveBlockId(null)}>
+        閉じる
+      </button>
+    </div>
+  );
 
   // schedule's row/bar tree needs dedicated date-field/connection-picker UI
   // per bar rather than the generic single-text-input OutlineRow (doc/spec.md
   // §6.2.6) - simplest as its own fully separate render path rather than
   // threading yet more pattern-specific branches through OutlineRow itself.
-  if (block.pattern === "schedule") {
+  if (definition.customEditor === "schedule") {
     return (
       <div className="structured-text-panel">
-        <div className="structured-text-panel-header">
-          <h3>階層テキスト({PATTERN_LABEL[block.pattern]})</h3>
-          <button type="button" onClick={() => setActiveBlockId(null)}>
-            閉じる
-          </button>
-        </div>
+        {header}
         <ScheduleEditor block={block} />
       </div>
     );
   }
 
+  const atRootLimit = block.outline.length >= (definition.rootLimit?.(block.params) ?? Infinity);
+  const editors = definition.paramEditors ?? [];
+  const renderEditors = (placement: "aboveOutline" | "belowOutline") =>
+    editors.map((editor, i) =>
+      (editor.kind === "fields" ? (editor.placement ?? "aboveOutline") : "aboveOutline") === placement ? (
+        <ParamEditorView key={`${block.id}-${i}`} editor={editor} block={block} definition={definition} />
+      ) : null,
+    );
+
   return (
     <div className="structured-text-panel">
-      <div className="structured-text-panel-header">
-        <h3>階層テキスト({PATTERN_LABEL[block.pattern]})</h3>
-        <button type="button" onClick={() => setActiveBlockId(null)}>
-          閉じる
-        </button>
-      </div>
+      {header}
 
-      {block.pattern === "venn" && (
-        <VennSetCountControl
-          value={typeof block.params.setCount === "number" ? block.params.setCount : VENN_MAX_SETS}
-          onChange={(n) => updateBlockParams(block.id, { setCount: n })}
-        />
-      )}
-
-      {block.pattern === "bulletMatrix" && (
-        <BulletMatrixColumnInputs
-          key={block.id}
-          columnHeaders={bulletMatrixColumnHeaders(block.params)}
-          onCommit={(headers) => updateBlockParams(block.id, { columnHeaders: headers })}
-        />
-      )}
-
-      {block.pattern === "pyramidChart" && (
-        <>
-          <PyramidChartTitleInput
-            key={`${block.id}-title`}
-            title={stringParam(block.params, "title")}
-            onCommit={(title) => updateBlockParams(block.id, { title })}
-          />
-          <BulletMatrixColumnInputs
-            key={`${block.id}-columns`}
-            columnHeaders={pyramidChartColumnHeaders(block.params)}
-            onCommit={(headers) => updateBlockParams(block.id, { columnHeaders: headers })}
-          />
-        </>
-      )}
-
-      {block.pattern === "flowSchedule" && (
-        <PyramidChartTitleInput
-          key={`${block.id}-title`}
-          title={stringParam(block.params, "title")}
-          onCommit={(title) => updateBlockParams(block.id, { title })}
-        />
-      )}
-
-      {block.pattern === "flowScheduleHorizontal" && (
-        <PyramidChartTitleInput
-          key={`${block.id}-title`}
-          title={stringParam(block.params, "title")}
-          onCommit={(title) => updateBlockParams(block.id, { title })}
-        />
-      )}
-
-      {block.pattern === "timeline" && (
-        <PyramidChartTitleInput
-          key={`${block.id}-title`}
-          title={stringParam(block.params, "title")}
-          onCommit={(title) => updateBlockParams(block.id, { title })}
-        />
-      )}
-
-      {block.pattern === "gridMatrix" && (
-        <PyramidChartTitleInput
-          key={`${block.id}-title`}
-          title={stringParam(block.params, "title")}
-          onCommit={(title) => updateBlockParams(block.id, { title })}
-        />
-      )}
-
-      {(block.pattern === "cycle" || block.pattern === "cycleWithEntry") && (
-        <PyramidChartTitleInput
-          key={`${block.id}-title`}
-          title={stringParam(block.params, "title")}
-          onCommit={(title) => updateBlockParams(block.id, { title })}
-        />
-      )}
-
-      {block.pattern === "beforeAfterHorizontal" && (
-        <BeforeAfterHorizontalLabelInputs
-          key={block.id}
-          labels={beforeAfterHorizontalLabels(block.params)}
-          onCommit={(labels) => updateBlockParams(block.id, labels)}
-        />
-      )}
+      {renderEditors("aboveOutline")}
 
       {block.outline.length === 0 ? (
         <button type="button" onClick={() => addFirstOutlineNode(block.id)}>
@@ -220,44 +93,93 @@ export function StructuredTextPanel() {
               blockId={block.id}
               depth={0}
               disableAddSibling={atRootLimit}
-              pattern={block.pattern}
+              definition={definition}
               index={i}
+              rootIndex={i}
             />
           ))}
         </div>
       )}
-      {block.outline.length > 0 && atRootLimit && block.pattern !== "gridMatrix" && (
-        <p className="outline-limit-note">
-          {block.pattern === "matrix" ? "マトリクスは4象限までです。" : "設定した集合数までです。"}
-        </p>
+      {block.outline.length > 0 && atRootLimit && definition.rootLimitNote && (
+        <p className="outline-limit-note">{definition.rootLimitNote}</p>
       )}
 
-      {block.pattern === "matrix" && (
-        <MatrixParamInputs key={block.id} params={matrixParams(block.params)} onCommit={(params) => updateBlockParams(block.id, { ...params })} />
-      )}
+      {renderEditors("belowOutline")}
 
-      {block.pattern === "bulletMatrix" ? (
-        <ImportSection
-          placeholder={BULLET_MATRIX_IMPORT_PLACEHOLDER}
-          onImport={(text) => {
-            const parsed = parseBulletMatrixMarkdown(text);
-            replaceOutline(block.id, parsed.outline, { columnHeaders: parsed.columnHeaders });
-          }}
-        />
-      ) : (
-        <ImportSection onImport={(text) => replaceOutline(block.id, parseOutline(text))} />
-      )}
+      <ImportSection
+        placeholder={definition.importPlaceholder}
+        onImport={(text) => {
+          if (!definition.importText) {
+            replaceOutline(block.id, parseOutline(text));
+            return;
+          }
+          const imported = definition.importText(text);
+          replaceOutline(block.id, imported.outline, imported.params);
+        }}
+      />
     </div>
   );
 }
 
-function VennSetCountControl({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+// One of the pattern's PatternDefinition.paramEditors, showing the current
+// values (as the pattern reads them - readParams) and committing every edit
+// through updateBlockParams.
+function ParamEditorView({ editor, block, definition }: { editor: ParamEditor; block: StructuredBlock; definition: PatternDefinition }) {
+  const updateBlockParams = useDocumentStore((s) => s.updateBlockParams);
+  const params = definition.readParams?.(block.params) ?? block.params;
+
+  switch (editor.kind) {
+    case "fields":
+      return (
+        <ParamFieldsInput
+          heading={editor.heading}
+          fields={editor.fields}
+          values={Object.fromEntries(editor.fields.map(({ key }) => [key, typeof params[key] === "string" ? params[key] : ""]))}
+          onCommit={(key, value) => updateBlockParams(block.id, { [key]: value })}
+        />
+      );
+    case "list":
+      return (
+        <StringListInput
+          heading={editor.heading}
+          items={stringListParam(params, editor.key)}
+          onCommit={(items) => updateBlockParams(block.id, { [editor.key]: items })}
+        />
+      );
+    case "choice": {
+      const raw = params[editor.key];
+      return (
+        <ChoiceInput
+          name={`${block.id}-${editor.key}`}
+          label={editor.label}
+          options={editor.options}
+          value={typeof raw === "number" ? raw : editor.defaultValue}
+          onChange={(n) => updateBlockParams(block.id, { [editor.key]: n })}
+        />
+      );
+    }
+  }
+}
+
+function ChoiceInput({
+  name,
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  name: string;
+  label: string;
+  options: number[];
+  value: number;
+  onChange: (n: number) => void;
+}) {
   return (
     <div className="venn-set-count">
-      <span>集合数</span>
-      {Array.from({ length: VENN_MAX_SETS - VENN_MIN_SETS + 1 }, (_, i) => VENN_MIN_SETS + i).map((n) => (
+      <span>{label}</span>
+      {options.map((n) => (
         <label key={n}>
-          <input type="radio" name="venn-set-count" checked={value === n} onChange={() => onChange(n)} />
+          <input type="radio" name={name} checked={value === n} onChange={() => onChange(n)} />
           {n}
         </label>
       ))}
@@ -265,30 +187,33 @@ function VennSetCountControl({ value, onChange }: { value: number; onChange: (n:
   );
 }
 
-// The matrix's title and its four axis-end labels (doc/spec.md §6.2.1), each
-// committed on blur.
-const MATRIX_PARAM_FIELDS: Array<{ key: keyof MatrixParams; label: string; placeholder: string }> = [
-  { key: "title", label: "タイトル", placeholder: "例: 人材活用のための分類" },
-  { key: "axisTop", label: "上端", placeholder: "例: 創造" },
-  { key: "axisBottom", label: "下端", placeholder: "例: 運用" },
-  { key: "axisLeft", label: "左端", placeholder: "例: 個人" },
-  { key: "axisRight", label: "右端", placeholder: "例: 組織" },
-];
-
-function MatrixParamInputs({ params, onCommit }: { params: Required<MatrixParams>; onCommit: (params: MatrixParams) => void }) {
-  const [values, setValues] = useState(params);
+// Free-text params fields under one heading (a title, the matrix's axis-end
+// labels, beforeAfterHorizontal's column labels, ...), each committed on
+// blur.
+function ParamFieldsInput({
+  heading,
+  fields,
+  values: initialValues,
+  onCommit,
+}: {
+  heading: string;
+  fields: ParamField[];
+  values: Record<string, string>;
+  onCommit: (key: string, value: string) => void;
+}) {
+  const [values, setValues] = useState(initialValues);
 
   return (
     <div className="matrix-axis-labels">
-      <h4>タイトル・軸ラベル</h4>
-      {MATRIX_PARAM_FIELDS.map(({ key, label, placeholder }) => (
+      <h4>{heading}</h4>
+      {fields.map(({ key, label, placeholder }) => (
         <label key={key}>
           {label}
           <input
             value={values[key]}
             placeholder={placeholder}
             onChange={(e) => setValues({ ...values, [key]: e.target.value })}
-            onBlur={() => onCommit({ [key]: values[key] })}
+            onBlur={() => onCommit(key, values[key])}
           />
         </label>
       ))}
@@ -296,88 +221,37 @@ function MatrixParamInputs({ params, onCommit }: { params: Required<MatrixParams
   );
 }
 
-// beforeAfterHorizontal's two column headers (doc/spec.md §6.2.13) - a fixed
-// pair, so it reuses MatrixParamInputs' (above), so it reuses that component's
-// styling rather than needing its own CSS class.
-function BeforeAfterHorizontalLabelInputs({
-  labels,
+// A growable list of strings (bulletMatrix's/pyramidChart's column headers,
+// doc/spec.md §6.2.4/§6.2.5). Adding/removing an item commits immediately (it
+// resizes every row's cells right away - see the patterns' onParamsChange);
+// renaming one commits on blur, matching ParamFieldsInput.
+function StringListInput({
+  heading,
+  items: initialItems,
   onCommit,
 }: {
-  labels: { beforeLabel: string; afterLabel: string };
-  onCommit: (labels: { beforeLabel: string; afterLabel: string }) => void;
+  heading: string;
+  items: string[];
+  onCommit: (items: string[]) => void;
 }) {
-  const [beforeLabel, setBeforeLabel] = useState(labels.beforeLabel);
-  const [afterLabel, setAfterLabel] = useState(labels.afterLabel);
-
-  function commit() {
-    onCommit({ beforeLabel, afterLabel });
-  }
-
-  return (
-    <div className="matrix-axis-labels">
-      <h4>列見出し</h4>
-      <label>
-        Before
-        <input value={beforeLabel} onChange={(e) => setBeforeLabel(e.target.value)} onBlur={commit} />
-      </label>
-      <label>
-        After
-        <input value={afterLabel} onChange={(e) => setAfterLabel(e.target.value)} onBlur={commit} />
-      </label>
-    </div>
-  );
-}
-
-// A single title field - pyramidChart's overall title (doc/spec.md §6.2.5)
-// and flowSchedule's (§6.2.9), flowScheduleHorizontal's (§6.2.10), and
-// timeline's (§6.2.11) all share this exact shape, so every one of them
-// reuses it rather than each carrying its own near-identical input. Unlike
-// MatrixParamInputs' fields, it reuses that component's styling
-// (.matrix-axis-labels) rather than needing its own CSS class.
-function PyramidChartTitleInput({ title, onCommit }: { title: string; onCommit: (title: string) => void }) {
-  const [value, setValue] = useState(title);
-
-  return (
-    <div className="matrix-axis-labels">
-      <h4>タイトル</h4>
-      <label>
-        見出し
-        <input value={value} onChange={(e) => setValue(e.target.value)} onBlur={() => onCommit(value)} />
-      </label>
-    </div>
-  );
-}
-
-// bulletMatrix's column headers (doc/spec.md §6.2.4) - a dynamic list rather
-// than MatrixParamInputs' fixed fields, since a bullet matrix can have any
-// number of columns. Adding/removing a column commits immediately (it
-// resizes every row's cells right away - see bulletMatrix.ts's
-// onParamsChange); renaming one commits on blur, matching MatrixParamInputs.
-function BulletMatrixColumnInputs({
-  columnHeaders,
-  onCommit,
-}: {
-  columnHeaders: string[];
-  onCommit: (columnHeaders: string[]) => void;
-}) {
-  const [headers, setHeaders] = useState(columnHeaders);
+  const [items, setItems] = useState(initialItems);
 
   return (
     <div className="bullet-matrix-columns">
-      <h4>列見出し</h4>
-      {headers.map((header, i) => (
+      <h4>{heading}</h4>
+      {items.map((item, i) => (
         <div className="bullet-matrix-column-row" key={i}>
           <input
-            value={header}
-            onChange={(e) => setHeaders((prev) => prev.map((h, j) => (j === i ? e.target.value : h)))}
-            onBlur={() => onCommit(headers)}
+            value={item}
+            onChange={(e) => setItems((prev) => prev.map((h, j) => (j === i ? e.target.value : h)))}
+            onBlur={() => onCommit(items)}
           />
           <button
             type="button"
             title="この列を削除"
             onClick={() => {
-              const next = headers.filter((_, j) => j !== i);
-              setHeaders(next);
+              const next = items.filter((_, j) => j !== i);
+              setItems(next);
               onCommit(next);
             }}
           >
@@ -388,8 +262,8 @@ function BulletMatrixColumnInputs({
       <button
         type="button"
         onClick={() => {
-          const next = [...headers, ""];
-          setHeaders(next);
+          const next = [...items, ""];
+          setItems(next);
           onCommit(next);
         }}
       >
@@ -658,7 +532,7 @@ function OutlineRow({
   blockId,
   depth,
   disableAddSibling,
-  pattern,
+  definition,
   index,
   rootIndex,
 }: {
@@ -666,11 +540,10 @@ function OutlineRow({
   blockId: string;
   depth: number;
   disableAddSibling?: boolean;
-  pattern: StructuredBlock["pattern"];
-  index?: number;
-  // Index of the root (depth-0) node this row sits under - gridMatrix's
-  // labels need to know which axis they belong to.
-  rootIndex?: number;
+  definition: PatternDefinition;
+  index: number;
+  // Index of the root (depth-0) node this row sits under.
+  rootIndex: number;
 }) {
   const updateOutlineNodeText = useDocumentStore((s) => s.updateOutlineNodeText);
   const addOutlineChild = useDocumentStore((s) => s.addOutlineChild);
@@ -695,74 +568,20 @@ function OutlineRow({
     setPendingFocusNodeId(null);
   }, [pendingFocusNodeId, node.id, setPendingFocusNodeId]);
 
-  // bulletMatrix's depth-1 nodes are cells, position-aligned with
-  // params.columnHeaders rather than by their own text (see bulletMatrix.ts) -
-  // that text is never read by the layout, and the cell itself is neither
-  // reorderable nor deletable on its own (its position IS its column;
-  // removing/adding columns goes through BulletMatrixColumnInputs instead).
-  // Only its title/detail children (added via "+子") are real content.
-  const isBulletMatrixCell = pattern === "bulletMatrix" && depth === 1;
-  // pyramidChart's depth-1 nodes (child[0]="regbo/scale", child[1..]=table
-  // cells) are position-aligned the same way (see pyramidChart.ts), except -
-  // unlike a bulletMatrix cell - each one IS a leaf value with its own text,
-  // so it keeps a real input instead of BulletMatrixColumnInputs' static
-  // placeholder; only reordering/deleting/nesting it (which would shift every
-  // later sibling's position) is disallowed.
-  const isPyramidChartValue = pattern === "pyramidChart" && depth === 1;
-  // verticalFlow's depth-1 badge (child[0], see verticalFlow.ts) is
-  // position-locked the same way as pyramidChart's depth-1 values, but only
-  // at position 0 - its sibling description lines (child[1..]) have no fixed
-  // count or position, so they stay fully reorderable/deletable like any
-  // other node.
-  const isVerticalFlowBadge = pattern === "verticalFlow" && depth === 1 && index === 0;
-  // timeline's depth-1 time label (child[0], see timeline.ts) is
-  // position-locked the same way as verticalFlow's badge above - an event has
-  // exactly this one child, no sibling description lines to keep reorderable.
-  const isTimelineTimeLabel = pattern === "timeline" && depth === 1 && index === 0;
-  // beforeAfter's depth-1 ASIS/TOBE blocks (child[0]/child[1], see
-  // beforeAfter.ts) are position-locked at BOTH positions (unlike
-  // verticalFlow's/timeline's single locked child[0]) - a topic always has
-  // exactly these two. Unlike a bulletMatrix cell, each one IS a leaf value
-  // with its own text (the headline), so it keeps a real input; unlike
-  // pyramidChart's depth-1 values, "+子" stays enabled (see below) since a
-  // block's description/extra-line children are real, freely-editable
-  // content, not a leaf.
-  const isBeforeAfterBlock = pattern === "beforeAfter" && depth === 1;
-  // beforeAfterHorizontal's depth-1 "before"/"after" groups (child[0]/
-  // child[1], see beforeAfterHorizontal.ts) are position-locked at BOTH
-  // positions like beforeAfter's ASIS/TOBE blocks above - own text is a real
-  // bullet line (the group's first item), so it keeps a real input; "+子"
-  // stays enabled to add the group's remaining bullet lines.
-  const isBeforeAfterHorizontalCell = pattern === "beforeAfterHorizontal" && depth === 1;
-  // chevronFlow's depth-1 duration (child[0], see chevronFlow.ts) is
-  // position-locked the same way as timeline's time label above; its sibling
-  // bullets (child[1..]) stay fully reorderable/deletable.
-  const isChevronFlowDuration = pattern === "chevronFlow" && depth === 1 && index === 0;
-  // gridMatrix's two roots ARE its axes (root[0] horizontal, root[1]
-  // vertical - see gridMatrix.ts), so they can't be moved, deleted or nested.
-  // Their labels (depth 1) stay reorderable/deletable, but never nest: Tab is
-  // blocked at every depth, and labels get no "+子".
-  const isGridMatrixAxis = pattern === "gridMatrix" && depth === 0;
-  const isGridMatrix = pattern === "gridMatrix";
-  const isFixedPositionChild =
-    isBulletMatrixCell ||
-    isPyramidChartValue ||
-    isVerticalFlowBadge ||
-    isTimelineTimeLabel ||
-    isBeforeAfterBlock ||
-    isBeforeAfterHorizontalCell ||
-    isChevronFlowDuration ||
-    isGridMatrixAxis;
+  // Position-based children (a step's badge, a row's cells, ...) are locked
+  // by the pattern's own rule so the generic editor can't shift the
+  // positions that give them their meaning (PatternDefinition.nodeRule).
+  const rule: OutlineNodeRule = definition.nodeRule?.({ depth, index, rootIndex }) ?? {};
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Tab") {
       e.preventDefault();
-      if (isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock || isBeforeAfterHorizontalCell || isChevronFlowDuration || isGridMatrix) return;
+      if (rule.noIndent) return;
       if (e.shiftKey) outdentOutlineNode(blockId, node.id);
       else indentOutlineNode(blockId, node.id);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (disableAddSibling || isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock || isBeforeAfterHorizontalCell || isChevronFlowDuration || isGridMatrixAxis) return;
+      if (disableAddSibling || rule.noAddSibling) return;
       addOutlineSibling(blockId, node.id);
       const block = useDocumentStore.getState().document.structuredBlocks.find((b) => b.id === blockId);
       const newNodeId = block ? findNextSiblingId(block.outline, node.id) : null;
@@ -773,46 +592,18 @@ function OutlineRow({
   return (
     <div className="outline-node">
       <div className="outline-row" style={{ paddingLeft: depth * 16 }}>
-        {isBulletMatrixCell ? (
-          <span className="outline-row-static-label">セル({"+子"}でタイトルを追加)</span>
+        {rule.staticLabel !== undefined ? (
+          <span className="outline-row-static-label">{rule.staticLabel}</span>
         ) : (
           <input
             ref={inputRef}
             value={node.text}
-            placeholder={
-              isVerticalFlowBadge
-                ? "バッジ(例: STEP 0)"
-                : isTimelineTimeLabel
-                  ? "時刻(例: 9:00)"
-                  : isBeforeAfterBlock
-                    ? index === 0
-                      ? "AS-IS(見出し)"
-                      : "TO-BE(見出し)"
-                    : isBeforeAfterHorizontalCell
-                      ? index === 0
-                        ? "Before項目(1件目)"
-                        : "After項目(1件目)"
-                      : pattern === "beforeAfter" && depth === 0
-                        ? "バッジ(例: 現場の悩み)"
-                        : isChevronFlowDuration
-                          ? "所要期間(例: 1週間、空欄可)"
-                          : pattern === "cycleWithEntry" && depth === 0 && index === 0
-                            ? "導入部(ループに入る前の段階)"
-                            : isGridMatrixAxis
-                              ? index === 0
-                                ? "横軸の名前(例: 時間軸)"
-                                : "縦軸の名前(例: 現在の事業との近さ)"
-                              : isGridMatrix
-                                ? rootIndex === 0
-                                  ? "列の見出し(左から。例: 短期)"
-                                  : "行の見出し(上から。例: 遠)"
-                                : "項目を入力"
-            }
+            placeholder={rule.placeholder ?? "項目を入力"}
             onChange={(e) => updateOutlineNodeText(blockId, node.id, e.target.value)}
             onKeyDown={handleKeyDown}
           />
         )}
-        {!isFixedPositionChild && (
+        {!rule.fixed && (
           <>
             <button type="button" title="上へ移動" onClick={() => moveOutlineNode(blockId, node.id, "up")}>
               ↑
@@ -822,12 +613,12 @@ function OutlineRow({
             </button>
           </>
         )}
-        {!isPyramidChartValue && !isVerticalFlowBadge && !isTimelineTimeLabel && !isChevronFlowDuration && !(isGridMatrix && depth > 0) && (
+        {!rule.noAddChild && (
           <button type="button" title="子を追加" onClick={() => addOutlineChild(blockId, node.id)}>
             +子
           </button>
         )}
-        {!isFixedPositionChild && (
+        {!rule.fixed && (
           <button type="button" title="削除" onClick={() => deleteOutlineNode(blockId, node.id)}>
             ×
           </button>
@@ -839,9 +630,9 @@ function OutlineRow({
           node={child}
           blockId={blockId}
           depth={depth + 1}
-          pattern={pattern}
+          definition={definition}
           index={i}
-          rootIndex={depth === 0 ? index : rootIndex}
+          rootIndex={rootIndex}
         />
       ))}
     </div>

@@ -132,6 +132,7 @@ export function layoutBeforeAfterHorizontal(outline: OutlineNode[], beforeLabel:
 }
 
 export const beforeAfterHorizontalPattern: PatternDefinition = {
+  label: "ビフォーアフター（横）",
   layout: (outline, params) =>
     layoutBeforeAfterHorizontal(outline, stringParam(params, "beforeLabel"), stringParam(params, "afterLabel")),
   // Column headers are placed above row 0.
@@ -141,4 +142,21 @@ export const beforeAfterHorizontalPattern: PatternDefinition = {
   restructure: "regenerate",
   // A row starts with both its "before" and "after" groups (child[0]/[1]).
   newRoot: () => emptyNode(emptyNodes(2)),
+  paramEditors: [
+    {
+      kind: "fields",
+      heading: "列見出し",
+      fields: [
+        { key: "beforeLabel", label: "Before" },
+        { key: "afterLabel", label: "After" },
+      ],
+    },
+  ],
+  // The "before"/"after" groups (child[0]/[1]) are locked at both
+  // positions; their own text is the group's first bullet and their
+  // children the rest.
+  nodeRule: ({ depth, index }) =>
+    depth === 1
+      ? { fixed: true, noIndent: true, noAddSibling: true, placeholder: index === 0 ? "Before項目(1件目)" : "After項目(1件目)" }
+      : {},
 };
