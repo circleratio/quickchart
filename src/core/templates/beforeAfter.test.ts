@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { layoutBeforeAfter } from "./beforeAfter";
 import type { OutlineNode } from "../model/document";
+import { paintOf, fillSlotOf } from "./layoutNode";
 
 function node(id: string, text: string, children: OutlineNode[] = []): OutlineNode {
   return { id, text, children };
@@ -76,19 +77,19 @@ describe("layoutBeforeAfter", () => {
   it("places topics left to right, each with its own ASIS/TOBE cell background", () => {
     const outline = [topic("t1", "b", "1", [], "1"), topic("t2", "b", "2", [], "2")];
     const layout = layoutBeforeAfter(outline);
-    const asis1 = layout.find((l) => l.kind === "rect" && l.neutralFill && l.nodeIds.includes("t1-asis"))!;
-    const asis2 = layout.find((l) => l.kind === "rect" && l.neutralFill && l.nodeIds.includes("t2-asis"))!;
+    const asis1 = layout.find((l) => l.kind === "rect" && paintOf(l) === "neutral" && l.nodeIds.includes("t1-asis"))!;
+    const asis2 = layout.find((l) => l.kind === "rect" && paintOf(l) === "neutral" && l.nodeIds.includes("t2-asis"))!;
     expect(asis2.x).toBeGreaterThan(asis1.x);
   });
 
   it("gives every ASIS cell the same height (driven by the topic with the most description lines) and likewise for TOBE", () => {
     const outline = [topic("t1", "b", "短い", [], "短い"), topic("t2", "b", "長い", ["1", "2", "3"], "長い", ["1", "2"])];
     const layout = layoutBeforeAfter(outline);
-    const asis1 = layout.find((l) => l.kind === "rect" && l.neutralFill && l.nodeIds.includes("t1-asis"))!;
-    const asis2 = layout.find((l) => l.kind === "rect" && l.neutralFill && l.nodeIds.includes("t2-asis"))!;
+    const asis1 = layout.find((l) => l.kind === "rect" && paintOf(l) === "neutral" && l.nodeIds.includes("t1-asis"))!;
+    const asis2 = layout.find((l) => l.kind === "rect" && paintOf(l) === "neutral" && l.nodeIds.includes("t2-asis"))!;
     expect(asis1.height).toBe(asis2.height);
-    const tobe1 = layout.find((l) => l.kind === "rect" && l.fillColorSlot === 4 && l.nodeIds.includes("t1-tobe"))!;
-    const tobe2 = layout.find((l) => l.kind === "rect" && l.fillColorSlot === 4 && l.nodeIds.includes("t2-tobe"))!;
+    const tobe1 = layout.find((l) => l.kind === "rect" && fillSlotOf(l) === 4 && l.nodeIds.includes("t1-tobe"))!;
+    const tobe2 = layout.find((l) => l.kind === "rect" && fillSlotOf(l) === 4 && l.nodeIds.includes("t2-tobe"))!;
     expect(tobe1.height).toBe(tobe2.height);
   });
 
@@ -97,9 +98,9 @@ describe("layoutBeforeAfter", () => {
     const layout = layoutBeforeAfter(outline);
     const asisCell = layout.find((l) => l.kind === "rect" && l.nodeIds.includes("t1-asis"))!;
     const tobeCell = layout.find((l) => l.kind === "rect" && l.nodeIds.includes("t1-tobe"))!;
-    expect(asisCell.neutralFill).toBe(true);
-    expect(asisCell.fillColorSlot).toBeUndefined();
-    expect(tobeCell.fillColorSlot).toBe(4);
+    expect(paintOf(asisCell)).toBe("neutral");
+    expect(fillSlotOf(asisCell)).toBeUndefined();
+    expect(fillSlotOf(tobeCell)).toBe(4);
     expect(tobeCell.cornerRadius).toBeGreaterThan(0);
   });
 
@@ -112,8 +113,8 @@ describe("layoutBeforeAfter", () => {
     // Downward: the far vertex sits at y fraction 1, midway across (x 0.5).
     expect(arrows[0].points?.[2]).toEqual({ x: 0.5, y: 1 });
 
-    const asisCell = layout.find((l) => l.kind === "rect" && l.neutralFill && l.nodeIds.includes("t1-asis"))!;
-    const tobeCell = layout.find((l) => l.kind === "rect" && l.fillColorSlot === 4 && l.nodeIds.includes("t1-tobe"))!;
+    const asisCell = layout.find((l) => l.kind === "rect" && paintOf(l) === "neutral" && l.nodeIds.includes("t1-asis"))!;
+    const tobeCell = layout.find((l) => l.kind === "rect" && fillSlotOf(l) === 4 && l.nodeIds.includes("t1-tobe"))!;
     expect(arrows[0].y).toBeGreaterThan(asisCell.y + asisCell.height - 1);
     expect(arrows[0].y).toBeLessThan(tobeCell.y);
   });
@@ -122,7 +123,7 @@ describe("layoutBeforeAfter", () => {
     const outline = [node("t1", "バッジ", [])];
     expect(() => layoutBeforeAfter(outline)).not.toThrow();
     const layout = layoutBeforeAfter(outline);
-    const asisCell = layout.find((l) => l.kind === "rect" && l.neutralFill)!;
+    const asisCell = layout.find((l) => l.kind === "rect" && paintOf(l) === "neutral")!;
     expect(asisCell.nodeIds).toEqual([]);
     const badge = layout.find((l) => l.kind === "heading")!;
     expect(badge.text).toBe("バッジ");

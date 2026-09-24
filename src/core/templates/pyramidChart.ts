@@ -79,7 +79,7 @@ export function layoutPyramidChart(outline: OutlineNode[], columnHeaders: string
       width: totalWidth,
       height: 0,
       kind: "line",
-      dashed: false,
+      paint: { stroke: 0 },
     }));
   }
 
@@ -110,7 +110,7 @@ export function layoutPyramidChart(outline: OutlineNode[], columnHeaders: string
       height: ROW_HEIGHT,
       kind: "polygon",
       points: bandPoints(i, rowCount),
-      fillColorSlot: slot,
+      paint: { fill: slot },
     }));
 
     // The item-name/scale labels sit directly on top of the band above, whose

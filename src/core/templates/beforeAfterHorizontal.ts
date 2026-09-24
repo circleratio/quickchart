@@ -69,7 +69,7 @@ export function layoutBeforeAfterHorizontal(outline: OutlineNode[], beforeLabel:
     fontWeight: "bold",
     fontSize: COLUMN_HEADER_FONT_SIZE,
   }));
-  result.push(decoration({ x: beforeX, y: 0, width: COLUMN_WIDTH, height: 0, kind: "line", dashed: false }));
+  result.push(decoration({ x: beforeX, y: 0, width: COLUMN_WIDTH, height: 0, kind: "line", paint: { stroke: 0 } }));
 
   result.push(fixedText(afterLabel, {
     x: afterX,
@@ -81,7 +81,7 @@ export function layoutBeforeAfterHorizontal(outline: OutlineNode[], beforeLabel:
     fontWeight: "bold",
     fontSize: COLUMN_HEADER_FONT_SIZE,
   }));
-  result.push(decoration({ x: afterX, y: 0, width: COLUMN_WIDTH, height: 0, kind: "line", dashed: false }));
+  result.push(decoration({ x: afterX, y: 0, width: COLUMN_WIDTH, height: 0, kind: "line", paint: { stroke: 0 } }));
 
   // A group's own text is its first bullet line (depth 1), its children the
   // rest (depth 2).
@@ -112,7 +112,7 @@ export function layoutBeforeAfterHorizontal(outline: OutlineNode[], beforeLabel:
         ...groupColumn(groupItems(row.children[1]), afterX, rowTop),
         // The connector arrow, centered in the gap between the two columns
         // and vertically centered on this row - a fixed neutral gray
-        // (`neutralFill`, see layoutNode.ts/style.ts), not this document's
+        // (`"neutral"` paint, see layoutNode.ts/style.ts), not this document's
         // color theme, since it's structural, not branded content (same
         // reasoning as timeline's track line).
         decoration({
@@ -122,7 +122,7 @@ export function layoutBeforeAfterHorizontal(outline: OutlineNode[], beforeLabel:
           height: ARROW_SIZE,
           kind: "polygon",
           points: RIGHT_TRIANGLE_POINTS,
-          neutralFill: true,
+          paint: "neutral",
         }),
       ],
     }),

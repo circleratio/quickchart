@@ -65,8 +65,8 @@ function arc(from: number, to: number, radius: number): Point[] {
   return Array.from({ length: steps + 1 }, (_, k) => polar(from + ((to - from) * k) / steps, radius));
 }
 
-function polygonNode(node: OutlineNode, abs: Point[], fillColorSlot: ThemeColorSlot): LayoutNode {
-  return shapeNode(node, { ...polygonFromAbsolute(abs), fillColorSlot });
+function polygonNode(node: OutlineNode, abs: Point[], fillSlot: ThemeColorSlot): LayoutNode {
+  return shapeNode(node, { ...polygonFromAbsolute(abs), paint: { fill: fillSlot } });
 }
 
 // An arrow's pointed head: its two flared base corners, its tip, and the

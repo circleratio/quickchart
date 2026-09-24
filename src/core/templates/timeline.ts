@@ -59,7 +59,7 @@ export function layoutTimeline(outline: OutlineNode[], title: string): LayoutNod
     width: 0,
     height: rowCenterY(outline.length - 1) + TRACK_TAIL - rowCenterY(0),
     kind: "line",
-    trackStyle: true,
+    paint: "track",
     arrowhead: true,
   }));
 
@@ -76,7 +76,7 @@ export function layoutTimeline(outline: OutlineNode[], title: string): LayoutNod
       width: DOT_SIZE,
       height: DOT_SIZE,
       kind: "ellipse",
-      fillColorSlot: 0,
+      paint: { fill: 0 },
     }));
 
     result.push(textNode(timeNode, 1, {

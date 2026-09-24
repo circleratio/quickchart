@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { layoutChevronFlow } from "./chevronFlow";
 import type { OutlineNode } from "../model/document";
+import { strokeSlotOf } from "./layoutNode";
 
 function node(id: string, text: string, children: OutlineNode[] = []): OutlineNode {
   return { id, text, children };
@@ -24,7 +25,7 @@ describe("layoutChevronFlow", () => {
     expect(outlines).toHaveLength(2);
     for (const o of outlines) {
       expect(o.nodeIds).toEqual(["s1"]);
-      expect(o.strokeColorSlot).toBeDefined();
+      expect(strokeSlotOf(o)).toBeDefined();
     }
 
     expect(layout.some((l) => l.text === "Step" && l.nodeIds.length === 0)).toBe(true);
@@ -70,7 +71,7 @@ describe("layoutChevronFlow", () => {
     const manyBullets = Array.from({ length: 20 }, (_, i) => node(`b${i}`, `項目${i}`));
     const layout = layoutChevronFlow([step("s1", "A", "1週間", manyBullets), step("s2", "B", "2週間")]);
 
-    const bodies = layout.filter((l) => l.kind === "polygon" && l.strokeColorSlot === 3);
+    const bodies = layout.filter((l) => l.kind === "polygon" && strokeSlotOf(l) === 3);
     expect(bodies).toHaveLength(2);
     expect(bodies[0].height).toBe(bodies[1].height);
 

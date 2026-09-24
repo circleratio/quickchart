@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { layoutHorizontalFlow } from "./horizontalFlow";
 import type { OutlineNode } from "../model/document";
+import { fillSlotOf, isDashed } from "./layoutNode";
 
 function node(id: string, text: string, children: OutlineNode[] = []): OutlineNode {
   return { id, text, children };
@@ -50,10 +51,10 @@ describe("layoutHorizontalFlow", () => {
     const layout = layoutHorizontalFlow(outline);
     const circle1 = layout.find((l) => l.kind === "ellipse" && l.nodeIds.includes("s1"))!;
     const circle2 = layout.find((l) => l.kind === "ellipse" && l.nodeIds.includes("s2"))!;
-    expect(circle1.fillColorSlot).toBeUndefined();
-    expect(circle1.dashed).toBe(true);
-    expect(circle2.fillColorSlot).toBe(3);
-    expect(circle2.dashed).toBeFalsy();
+    expect(fillSlotOf(circle1)).toBeUndefined();
+    expect(isDashed(circle1)).toBe(true);
+    expect(fillSlotOf(circle2)).toBe(3);
+    expect(isDashed(circle2)).toBe(false);
   });
 
   it("darkens filled circles going left to right", () => {
@@ -61,7 +62,7 @@ describe("layoutHorizontalFlow", () => {
     const layout = layoutHorizontalFlow(outline);
     const circle2 = layout.find((l) => l.kind === "ellipse" && l.nodeIds.includes("s2"))!;
     const circle3 = layout.find((l) => l.kind === "ellipse" && l.nodeIds.includes("s3"))!;
-    expect(circle3.fillColorSlot).toBeLessThan(circle2.fillColorSlot as number);
+    expect(fillSlotOf(circle3)).toBeLessThan(fillSlotOf(circle2) as number);
   });
 
   it("gives filled-circle labels contrastBgColorSlot matching their own circle's fill, and leaves the unfilled first circle's label at the default text color", () => {
@@ -71,7 +72,7 @@ describe("layoutHorizontalFlow", () => {
     const label1 = layout.find((l) => l.kind === "label" && l.nodeIds.includes("s1"))!;
     const label2 = layout.find((l) => l.kind === "label" && l.nodeIds.includes("s2"))!;
     expect(label1.contrastBgColorSlot).toBeUndefined();
-    expect(label2.contrastBgColorSlot).toBe(circle2.fillColorSlot);
+    expect(label2.contrastBgColorSlot).toBe(fillSlotOf(circle2));
   });
 
   it("connects consecutive circles with a solid, arrowhead-tipped line, one fewer than the step count", () => {
@@ -80,7 +81,7 @@ describe("layoutHorizontalFlow", () => {
     const connectors = layout.filter((l) => l.kind === "line");
     expect(connectors).toHaveLength(2);
     expect(connectors.every((c) => c.arrowhead)).toBe(true);
-    expect(connectors.every((c) => c.dashed === false)).toBe(true);
+    expect(connectors.every((c) => !isDashed(c))).toBe(true);
     expect(connectors.every((c) => c.nodeIds.length === 0)).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { layoutTimeline } from "./timeline";
 import type { OutlineNode } from "../model/document";
+import { paintOf, fillSlotOf } from "./layoutNode";
 
 function node(id: string, text: string, children: OutlineNode[] = []): OutlineNode {
   return { id, text, children };
@@ -22,7 +23,7 @@ describe("layoutTimeline", () => {
     const layout = layoutTimeline(outline, "");
     const dot = layout.find((l) => l.kind === "ellipse")!;
     expect(dot.nodeIds).toEqual(["e1"]);
-    expect(dot.fillColorSlot).toBe(0);
+    expect(fillSlotOf(dot)).toBe(0);
 
     const time = layout.find((l) => l.nodeIds.includes("e1-time"))!;
     expect(time.text).toBe("9:00");
@@ -57,7 +58,7 @@ describe("layoutTimeline", () => {
   it("draws exactly one gray, thick, arrow-tipped track line spanning from the first to past the last dot", () => {
     const outline = [event("e1", "1", "9:00"), event("e2", "2", "9:10"), event("e3", "3", "9:20")];
     const layout = layoutTimeline(outline, "");
-    const tracks = layout.filter((l) => l.kind === "line" && l.trackStyle);
+    const tracks = layout.filter((l) => l.kind === "line" && paintOf(l) === "track");
     expect(tracks).toHaveLength(1);
     expect(tracks[0].arrowhead).toBe(true);
     expect(tracks[0].nodeIds).toEqual([]);
@@ -79,7 +80,7 @@ describe("layoutTimeline", () => {
     expect(title.align).toBe("center");
     expect(title.nodeIds).toEqual([]);
 
-    const rules = withTitle.filter((l) => l.kind === "line" && !l.trackStyle);
+    const rules = withTitle.filter((l) => l.kind === "line" && paintOf(l) !== "track");
     expect(rules).toHaveLength(2);
 
     const dotWithTitle = withTitle.find((l) => l.kind === "ellipse" && l.nodeIds.includes("e1"))!;
@@ -90,7 +91,7 @@ describe("layoutTimeline", () => {
   it("renders only the title (no rows, no track) when the outline is empty", () => {
     const layout = layoutTimeline([], "1日のスケジュール");
     expect(layout.some((l) => l.kind === "ellipse")).toBe(false);
-    expect(layout.some((l) => l.kind === "line" && l.trackStyle)).toBe(false);
+    expect(layout.some((l) => l.kind === "line" && paintOf(l) === "track")).toBe(false);
     expect(layout.some((l) => l.text === "1日のスケジュール")).toBe(true);
   });
 

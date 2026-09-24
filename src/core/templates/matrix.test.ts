@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { layoutMatrix, matrixParams, MATRIX_MAX_ROOTS } from "./matrix";
 import type { OutlineNode } from "../model/document";
+import { fillSlotOf, strokeSlotOf } from "./layoutNode";
 
 function node(id: string, text: string, children: OutlineNode[] = []): OutlineNode {
   return { id, text, children };
@@ -57,9 +58,9 @@ describe("layoutMatrix", () => {
     const layout = layoutMatrix(quadrants());
     const badges = layout.filter((l) => l.kind === "rect" && l.cornerRadius !== undefined);
     expect(badges).toHaveLength(4);
-    expect(new Set(badges.slice(0, 3).map((b) => b.fillColorSlot)).size).toBe(3);
-    expect(badges[3].fillColorSlot).toBeUndefined();
-    expect(badges[3].strokeColorSlot).toBeDefined();
+    expect(new Set(badges.slice(0, 3).map((b) => fillSlotOf(b))).size).toBe(3);
+    expect(fillSlotOf(badges[3])).toBeUndefined();
+    expect(strokeSlotOf(badges[3])).toBeDefined();
   });
 
   it("marks bullets with '□ ' and indents continuation lines", () => {

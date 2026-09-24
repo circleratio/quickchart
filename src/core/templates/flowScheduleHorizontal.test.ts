@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { layoutFlowScheduleHorizontal } from "./flowScheduleHorizontal";
 import type { OutlineNode } from "../model/document";
+import { fillSlotOf } from "./layoutNode";
 
 function node(id: string, text: string, children: OutlineNode[] = []): OutlineNode {
   return { id, text, children };
@@ -67,7 +68,7 @@ describe("layoutFlowScheduleHorizontal", () => {
     const layout = layoutFlowScheduleHorizontal(outline, "");
     const triangles = layout.filter((l) => l.kind === "polygon");
     expect(triangles).toHaveLength(2);
-    expect(triangles.every((t) => t.fillColorSlot === 0)).toBe(true);
+    expect(triangles.every((t) => fillSlotOf(t) === 0)).toBe(true);
     expect(triangles.every((t) => t.nodeIds.length === 0)).toBe(true);
     // Right-pointing: the far vertex (index 2) sits at x fraction 1, midway
     // down (y fraction 0.5) - see RIGHT_TRIANGLE_POINTS.

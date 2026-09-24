@@ -62,7 +62,7 @@ export function layoutVerticalFlow(outline: OutlineNode[]): LayoutNode[] {
       height: BADGE_HEIGHT,
       kind: "heading",
       fontSize: BADGE_FONT_SIZE,
-      fillColorSlot: colorSlot,
+      paint: { fill: colorSlot },
       // Same slot as the fill, so the label stays legible against both the
       // pale early shades and the dark late ones (style.ts's contrastTextColor).
       contrastBgColorSlot: colorSlot,

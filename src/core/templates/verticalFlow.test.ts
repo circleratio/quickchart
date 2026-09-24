@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { layoutVerticalFlow } from "./verticalFlow";
 import type { OutlineNode } from "../model/document";
+import { fillSlotOf, isDashed } from "./layoutNode";
 
 function node(id: string, text: string, children: OutlineNode[] = []): OutlineNode {
   return { id, text, children };
@@ -59,7 +60,7 @@ describe("layoutVerticalFlow", () => {
     const connectors = layout.filter((l) => l.kind === "line");
     expect(connectors).toHaveLength(2);
     expect(connectors.every((c) => c.arrowhead)).toBe(true);
-    expect(connectors.every((c) => c.dashed !== false)).toBe(true);
+    expect(connectors.every((c) => isDashed(c))).toBe(true);
     expect(connectors.every((c) => c.nodeIds.length === 0)).toBe(true);
   });
 
@@ -69,12 +70,12 @@ describe("layoutVerticalFlow", () => {
     const badge1 = layout.find((l) => l.nodeIds.includes("s1-badge"))!;
     const badge2 = layout.find((l) => l.nodeIds.includes("s2-badge"))!;
     const badge3 = layout.find((l) => l.nodeIds.includes("s3-badge"))!;
-    expect(badge3.fillColorSlot).toBe("accent");
-    expect(badge2.fillColorSlot).toBe(3);
-    expect(badge1.fillColorSlot).toBe(4);
+    expect(fillSlotOf(badge3)).toBe("accent");
+    expect(fillSlotOf(badge2)).toBe(3);
+    expect(fillSlotOf(badge1)).toBe(4);
     // Contrast slot always matches the fill slot, for legible label text.
-    expect(badge1.contrastBgColorSlot).toBe(badge1.fillColorSlot);
-    expect(badge3.contrastBgColorSlot).toBe(badge3.fillColorSlot);
+    expect(badge1.contrastBgColorSlot).toBe(fillSlotOf(badge1));
+    expect(badge3.contrastBgColorSlot).toBe(fillSlotOf(badge3));
   });
 
   it("handles a step missing its badge/description children without throwing (defensive)", () => {

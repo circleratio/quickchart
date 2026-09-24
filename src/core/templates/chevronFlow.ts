@@ -125,7 +125,7 @@ export function layoutChevronFlow(outline: OutlineNode[]): LayoutNode[] {
       height: CHEVRON_HEIGHT,
       kind: "polygon",
       points: chevronPoints(),
-      strokeColorSlot: 1,
+      paint: { stroke: 1 },
     }));
     result.push(shapeNode(step, {
       x,
@@ -134,7 +134,7 @@ export function layoutChevronFlow(outline: OutlineNode[]): LayoutNode[] {
       height: bodyHeight,
       kind: "polygon",
       points: BODY_POINTS,
-      strokeColorSlot: 3,
+      paint: { stroke: 3 },
     }));
 
     // "Step" + number are purely position-derived (like

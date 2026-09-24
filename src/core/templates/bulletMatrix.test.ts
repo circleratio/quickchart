@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { layoutBulletMatrix } from "./bulletMatrix";
 import type { OutlineNode } from "../model/document";
+import { fillSlotOf } from "./layoutNode";
 
 function node(id: string, text: string, children: OutlineNode[] = []): OutlineNode {
   return { id, text, children };
@@ -54,8 +55,8 @@ describe("layoutBulletMatrix", () => {
     const layout = layoutBulletMatrix(outline, ["列1"]);
     const rowHeader = layout.find((l) => l.nodeIds.includes("r1"))!;
     const columnHeader = layout.find((l) => l.text === "列1")!;
-    expect(rowHeader.fillColorSlot).toBe("accent");
-    expect(columnHeader.fillColorSlot).not.toBe("accent");
+    expect(fillSlotOf(rowHeader)).toBe("accent");
+    expect(fillSlotOf(columnHeader)).not.toBe("accent");
   });
 
   it("places a title (bold+underlined) and its detail lines (plain) stacked inside their own cell", () => {

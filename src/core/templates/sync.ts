@@ -9,17 +9,15 @@ import {
   getColorTheme,
   headingStyle,
   labelStyle,
-  outlineStyle,
   resolveColorSlot,
   neutralPanelStyle,
-  ruleStyle,
-  separatorStyle,
   strokeOnlyStyle,
   timelineTrackStyle,
   treeConnectorStyle,
 } from "../model/style";
 import type { ShapeStyle } from "../model/style";
-import type { LayoutNode } from "./layoutNode";
+import { paintOf } from "./layoutNode";
+import type { LayoutNode, Paint } from "./layoutNode";
 import { emptyNode } from "./patternDefinition";
 import type { RawParams } from "./patternDefinition";
 import { patternOf } from "./registry";
@@ -60,38 +58,31 @@ function normalizeToOrigin(nodes: LayoutNode[]): LayoutNode[] {
   return nodes.map((n) => ({ ...n, x: n.x - minX, y: n.y - minY }));
 }
 
-// Resolves a LayoutNode's full ShapeStyle: a base style from its `kind`
-// (falling back to defaultShapeStyle's bordered box for "text"/undefined),
-// with fontWeight/italic/underline/textColorSlot layered on top where set -
-// decorations a kind's own style function doesn't hardcode, so a pattern can
+// The fill/stroke a Paint stands for (see layoutNode.ts's Paint).
+function paintStyle(themeId: string, paint: Paint): ShapeStyle {
+  if (paint === "neutral") return neutralPanelStyle();
+  if (paint === "track") return timelineTrackStyle();
+  if ("fill" in paint) return filledShapeStyle(themeId, paint.fill);
+  return strokeOnlyStyle(themeId, paint.stroke, paint.dashed === true);
+}
+
+// Resolves a LayoutNode's full ShapeStyle: the kind's text style (for the
+// text-bearing kinds), its paint (per-kind default applied - paintOf), then
+// fontWeight/italic/underline/textColorSlot/contrastBgColorSlot on top where
+// set - decorations a kind's own style doesn't hardcode, so a pattern can
 // reuse a kind (e.g. "label") with a different look per LayoutNode instead of
-// every decoration combination needing its own kind (see layoutNode.ts).
+// every combination needing its own kind (see layoutNode.ts).
 function styleFor(themeId: string, layoutNode: LayoutNode): ShapeStyle {
   const theme = getColorTheme(themeId);
+  const paint = paintOf(layoutNode);
   const base: ShapeStyle =
-    layoutNode.kind === "ellipse" || layoutNode.kind === "rect"
-      ? layoutNode.fillColorSlot !== undefined
-        ? filledShapeStyle(themeId, layoutNode.fillColorSlot)
-        : layoutNode.strokeColorSlot !== undefined
-          ? strokeOnlyStyle(themeId, layoutNode.strokeColorSlot)
-          : layoutNode.neutralFill
-          ? neutralPanelStyle()
-          : outlineStyle(themeId, layoutNode.dashed === true)
-      : layoutNode.kind === "line"
-        ? layoutNode.trackStyle
-          ? timelineTrackStyle()
-          : layoutNode.dashed === false
-            ? ruleStyle(themeId)
-            : separatorStyle(themeId)
-        : layoutNode.kind === "label"
-          ? labelStyle(themeId, layoutNode.fontSize)
-          : layoutNode.kind === "polygon" && layoutNode.strokeColorSlot !== undefined
-            ? strokeOnlyStyle(themeId, layoutNode.strokeColorSlot)
-            : layoutNode.kind === "heading" || layoutNode.kind === "polygon"
-              ? layoutNode.kind === "polygon" && layoutNode.neutralFill
-                ? neutralPanelStyle()
-                : headingStyle(themeId, layoutNode.fontSize, layoutNode.fillColorSlot)
-              : defaultShapeStyle(themeId);
+    layoutNode.kind === "label"
+      ? labelStyle(themeId, layoutNode.fontSize)
+      : layoutNode.kind === "heading"
+        ? { ...headingStyle(themeId, layoutNode.fontSize), ...paintStyle(themeId, paint!) }
+        : paint
+          ? paintStyle(themeId, paint)
+          : defaultShapeStyle(themeId);
   return {
     ...base,
     ...(layoutNode.fontWeight ? { fontWeight: layoutNode.fontWeight } : {}),

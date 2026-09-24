@@ -58,7 +58,7 @@ export function getColorTheme(id: string): ColorTheme {
 
 // Index into a ColorTheme's `primary` shade scale (0 = darkest), or the
 // theme's single `accent` color - lets a LayoutNode pick a theme color by
-// reference (see layoutNode.ts's fillColorSlot/textColorSlot) instead of a
+// reference (see layoutNode.ts's Paint and textColorSlot) instead of a
 // pattern embedding a literal hex, which would break theme switching.
 export type ThemeColorSlot = 0 | 1 | 2 | 3 | 4 | "accent";
 
@@ -99,19 +99,6 @@ export function defaultShapeStyle(themeId: string = DEFAULT_COLOR_THEME_ID): Sha
     fontSize: 16,
     textColor: theme.primary[0],
   };
-}
-
-// An unfilled outline, for a generated shape that's a structural backdrop
-// rather than a labeled box: venn's set circles (so overlap regions and the
-// item labels placed on top stay legible) and a matrix quadrant's background
-// square (so it doesn't double up on top of its own title/item labels, which
-// keep the normal filled style). `dashed` swaps the border for the same dash
-// pattern separatorStyle uses - horizontalFlow's first, "casual/optional"
-// step circle (doc/spec.md §6.2.8), which needs to read as unfilled AND
-// visually distinct from a normal (solid-outline) shape.
-export function outlineStyle(themeId: string = DEFAULT_COLOR_THEME_ID, dashed = false): ShapeStyle {
-  const theme = getColorTheme(themeId);
-  return { fill: "none", stroke: theme.primary[0], strokeWidth: 2, ...(dashed ? { strokeDasharray: "4 3" } : {}) };
 }
 
 // A filled closed shape (ellipse/rect) whose own fill IS its identity -
@@ -171,27 +158,6 @@ export function headingStyle(
   };
 }
 
-// Dashed rule between headingBullets' rows (see headingBullets.ts). Uses the
-// theme's mid-tone shade rather than outlineStyle's dark primary[0] - a full
-// row divider reads better as a subtle rule than a structural border. This is
-// ShapeRenderer's own floor for an unstyled line (Math.max(strokeWidth, 2)) -
-// a thinner value here wouldn't render any thinner.
-export function separatorStyle(themeId: string = DEFAULT_COLOR_THEME_ID): ShapeStyle {
-  const theme = getColorTheme(themeId);
-  return { fill: "none", stroke: theme.primary[2], strokeWidth: 2, strokeDasharray: "4 3" };
-}
-
-// Solid rule, for a divider that reads as a structural boundary rather than a
-// subtle row separator (pyramidChart's line under its title, between the
-// title and the column-header row - see pyramidChart.ts). Same dark tone as
-// outlineStyle, kept as its own named function since the two express
-// different roles (a shape's own border vs. a standalone divider line) even
-// though their values currently coincide.
-export function ruleStyle(themeId: string = DEFAULT_COLOR_THEME_ID): ShapeStyle {
-  const theme = getColorTheme(themeId);
-  return { fill: "none", stroke: theme.primary[0], strokeWidth: 2 };
-}
-
 // Parent-child connector lines for ツリー図 ("pyramid" pattern - see
 // pyramid.ts's regenerateTreeConnectors in sync.ts). Deliberately a fixed
 // pale gray rather than a theme color: the connecting lines are meant to read
@@ -225,12 +191,14 @@ export function neutralPanelStyle(): ShapeStyle {
   return { fill: "#f2f2f2", stroke: "#f2f2f2", strokeWidth: 2 };
 }
 
-// An unfilled outline in a chosen theme shade - フローチャート's chevron and
-// body-box outlines (templates/chevronFlow.ts, doc/spec.md §6.2.14). Unlike
-// outlineStyle's fixed primary[0], the two outlines need different weights of
-// the same theme color (a mid-tone chevron, a pale body box) to read as
-// heading vs. container.
-export function strokeOnlyStyle(themeId: string = DEFAULT_COLOR_THEME_ID, strokeColorSlot: ThemeColorSlot): ShapeStyle {
+// Unfilled, stroked in a chosen theme shade - a generated shape's outline or a
+// generated line (layoutNode.ts's `{ stroke }` paint): venn's set circles and
+// matrix's quadrant boxes (a structural backdrop that leaves the labels on
+// top legible), chevronFlow's open-sided outlines, a solid rule under a
+// title, or - dashed, in a mid-tone shade - a subtle separator between rows.
+// A thinner stroke than 2 wouldn't render any thinner (ShapeRenderer's own
+// floor for an unstyled line).
+export function strokeOnlyStyle(themeId: string = DEFAULT_COLOR_THEME_ID, strokeColorSlot: ThemeColorSlot, dashed = false): ShapeStyle {
   const theme = getColorTheme(themeId);
-  return { fill: "none", stroke: resolveColorSlot(theme, strokeColorSlot), strokeWidth: 2 };
+  return { fill: "none", stroke: resolveColorSlot(theme, strokeColorSlot), strokeWidth: 2, ...(dashed ? { strokeDasharray: "4 3" } : {}) };
 }

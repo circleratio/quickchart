@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { layoutPyramidChart } from "./pyramidChart";
 import type { OutlineNode } from "../model/document";
+import { fillSlotOf, isDashed } from "./layoutNode";
 
 function node(id: string, text: string, children: OutlineNode[] = []): OutlineNode {
   return { id, text, children };
@@ -58,8 +59,8 @@ describe("layoutPyramidChart", () => {
     const layout = layoutPyramidChart(outline, ["定義"], "");
     const band1 = layout.find((l) => l.kind === "polygon" && l.nodeIds.includes("l1"))!;
     const band2 = layout.find((l) => l.kind === "polygon" && l.nodeIds.includes("l2"))!;
-    expect(band1.fillColorSlot).toBe(0);
-    expect(band2.fillColorSlot).toBe(1);
+    expect(fillSlotOf(band1)).toBe(0);
+    expect(fillSlotOf(band2)).toBe(1);
   });
 
   it("gives the item-name and scale labels contrastBgColorSlot matching their own band's fill, for legible text over any shade", () => {
@@ -68,8 +69,8 @@ describe("layoutPyramidChart", () => {
     const band = layout.find((l) => l.kind === "polygon" && l.nodeIds.includes("l1"))!;
     const itemLabel = layout.find((l) => l.kind === "label" && l.text === "項目1")!;
     const scaleLabel = layout.find((l) => l.nodeIds.includes("l1-scale"))!;
-    expect(itemLabel.contrastBgColorSlot).toBe(band.fillColorSlot);
-    expect(scaleLabel.contrastBgColorSlot).toBe(band.fillColorSlot);
+    expect(itemLabel.contrastBgColorSlot).toBe(fillSlotOf(band));
+    expect(scaleLabel.contrastBgColorSlot).toBe(fillSlotOf(band));
   });
 
   it("stacks levels top to bottom, each row's cells aligned with columnHeaders by position, not text", () => {
@@ -93,13 +94,13 @@ describe("layoutPyramidChart", () => {
     const layout = layoutPyramidChart(outline, ["列1"], "");
     const separators = layout.filter((l) => l.kind === "line" && l.height === 0);
     expect(separators).toHaveLength(2);
-    expect(separators.every((l) => l.dashed !== false)).toBe(true);
+    expect(separators.every((l) => isDashed(l))).toBe(true);
   });
 
   it("draws one solid (non-dashed) rule under the title, spanning the full diagram width", () => {
     const outline = [level("l1", "項目1", "", ["A"])];
     const layout = layoutPyramidChart(outline, ["列1"], "タイトル");
-    const rule = layout.find((l) => l.kind === "line" && l.dashed === false)!;
+    const rule = layout.find((l) => l.kind === "line" && !isDashed(l))!;
     expect(rule).toBeDefined();
     const band = layout.find((l) => l.kind === "polygon" && l.nodeIds.includes("l1"))!;
     expect(rule.width).toBeGreaterThan(band.width); // spans the pyramid column plus the table

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { layoutBeforeAfterHorizontal } from "./beforeAfterHorizontal";
 import type { OutlineNode } from "../model/document";
+import { paintOf, isDashed } from "./layoutNode";
 
 function node(id: string, text: string, children: OutlineNode[] = []): OutlineNode {
   return { id, text, children };
@@ -77,7 +78,7 @@ describe("layoutBeforeAfterHorizontal", () => {
     const layout = layoutBeforeAfterHorizontal(outline, "", "");
     const arrows = layout.filter((l) => l.kind === "polygon");
     expect(arrows).toHaveLength(2);
-    expect(arrows.every((a) => a.neutralFill)).toBe(true);
+    expect(arrows.every((a) => paintOf(a) === "neutral")).toBe(true);
     expect(arrows.every((a) => a.nodeIds.length === 0)).toBe(true);
     // Right-pointing: the far vertex sits at x fraction 1, midway down (y 0.5).
     expect(arrows[0].points?.[2]).toEqual({ x: 1, y: 0.5 });
@@ -86,14 +87,14 @@ describe("layoutBeforeAfterHorizontal", () => {
   it("draws a dashed row separator between rows but not above the first or below the last", () => {
     const outline = [row("r1", "1", [], []), row("r2", "2", [], []), row("r3", "3", [], [])];
     const layout = layoutBeforeAfterHorizontal(outline, "", "");
-    const separators = layout.filter((l) => l.kind === "line" && l.dashed !== false);
+    const separators = layout.filter((l) => l.kind === "line" && isDashed(l));
     expect(separators).toHaveLength(2);
   });
 
   it("draws each column header's own underline spanning just that column, not the row-header column", () => {
     const outline = [row("r1", "1", [], [])];
     const layout = layoutBeforeAfterHorizontal(outline, "", "");
-    const rules = layout.filter((l) => l.kind === "line" && l.dashed === false);
+    const rules = layout.filter((l) => l.kind === "line" && !isDashed(l));
     expect(rules).toHaveLength(2);
     expect(rules[0].x).toBeGreaterThan(0); // starts after the row-header column
     expect(rules[1].x).toBeGreaterThan(rules[0].x + rules[0].width); // after the before column + arrow gap

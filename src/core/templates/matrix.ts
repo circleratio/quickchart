@@ -102,7 +102,7 @@ function doubleArrow(from: number, to: number, across: number, vertical: boolean
 }
 
 function polygonNode(abs: Point[]): LayoutNode {
-  return decoration({ ...polygonFromAbsolute(abs), fillColorSlot: 0 });
+  return decoration({ ...polygonFromAbsolute(abs), paint: { fill: 0 } });
 }
 
 // "４象限マトリクス" (doc/spec.md §6.2.1): four outlined quadrants split by a cross
@@ -144,7 +144,7 @@ export function layoutMatrix(outline: OutlineNode[], params: MatrixParams = {}):
       width: QUADRANT_WIDTH,
       height: quadrantHeight,
       kind: "rect",
-      strokeColorSlot: 2,
+      paint: { stroke: 2 },
     }));
 
     const badgeY = isBottomRow ? y + quadrantHeight - BADGE_INSET - BADGE_HEIGHT : y + BADGE_INSET;
@@ -157,8 +157,8 @@ export function layoutMatrix(outline: OutlineNode[], params: MatrixParams = {}):
     });
     shapes.push(
       fill !== undefined
-        ? { ...badge, kind: "rect", fillColorSlot: fill, cornerRadius: BADGE_RADIUS }
-        : { ...badge, kind: "rect", strokeColorSlot: 0, cornerRadius: BADGE_RADIUS },
+        ? { ...badge, kind: "rect", paint: { fill }, cornerRadius: BADGE_RADIUS }
+        : { ...badge, kind: "rect", paint: { stroke: 0 }, cornerRadius: BADGE_RADIUS },
     );
     labels.push({
       ...badge,

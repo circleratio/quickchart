@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { dateToGridX, layoutSchedule } from "./schedule";
 import type { OutlineNode } from "../model/document";
 import type { ScheduleParams } from "./schedule";
+import { isDashed } from "./layoutNode";
 
 function node(id: string, text: string, children: OutlineNode[] = []): OutlineNode {
   return { id, text, children };
@@ -126,7 +127,7 @@ describe("layoutSchedule", () => {
   it("draws a single direct arrow between two bars in the same row", () => {
     const outline = [row("r1", "行1", [bar("b1", "A", "2018-06-01", "2018-06-10"), bar("b2", "B", "2018-06-15", "2018-06-25")])];
     const layout = layoutSchedule(outline, baseParams({ connections: { b1: "b2" } }));
-    const connectorLines = layout.filter((l) => l.kind === "line" && l.dashed === false);
+    const connectorLines = layout.filter((l) => l.kind === "line" && !isDashed(l));
     expect(connectorLines).toHaveLength(1);
     expect(connectorLines[0].height).toBe(0); // purely horizontal - same row
     expect(connectorLines[0].arrowhead).toBe(true);
@@ -138,7 +139,7 @@ describe("layoutSchedule", () => {
       row("r2", "行2", [bar("b2", "B", "2018-07-01", "2018-07-10")]),
     ];
     const layout = layoutSchedule(outline, baseParams({ connections: { b1: "b2" } }));
-    const connectorLines = layout.filter((l) => l.kind === "line" && l.dashed === false);
+    const connectorLines = layout.filter((l) => l.kind === "line" && !isDashed(l));
     expect(connectorLines).toHaveLength(2);
     // A short rightward stub (no arrowhead) then a downward arrow.
     expect(connectorLines[0].height).toBe(0);
@@ -158,7 +159,7 @@ describe("layoutSchedule", () => {
     ];
     const layout = layoutSchedule(outline, baseParams({ connections: { b1: "b2" } }));
     const targetBar = layout.find((l) => l.nodeIds.includes("b2"))!;
-    const connectorLines = layout.filter((l) => l.kind === "line" && l.dashed === false);
+    const connectorLines = layout.filter((l) => l.kind === "line" && !isDashed(l));
     const turnX = connectorLines[0].x + connectorLines[0].width;
     // Close to the target's own start, not halfway across the whole chart.
     expect(turnX).toBeGreaterThanOrEqual(targetBar.x);
@@ -169,12 +170,12 @@ describe("layoutSchedule", () => {
     const outline = [row("r1", "行1", [bar("b1", "A", "2018-06-01", "2018-06-10")])];
     expect(() => layoutSchedule(outline, baseParams({ connections: { b1: "missing" } }))).not.toThrow();
     const layout = layoutSchedule(outline, baseParams({ connections: { b1: "missing" } }));
-    expect(layout.filter((l) => l.dashed === false)).toHaveLength(0);
+    expect(layout.filter((l) => l.kind === "line" && !isDashed(l))).toHaveLength(0);
   });
 
   it("draws one vertical grid line per month-column boundary (columnCount + 1)", () => {
     const layout = layoutSchedule([row("r1", "行1", [])], baseParams({ columnCount: 3 }));
-    const verticalLines = layout.filter((l) => l.kind === "line" && l.width === 0 && l.dashed !== false && l.nodeIds.length === 0);
+    const verticalLines = layout.filter((l) => l.kind === "line" && l.width === 0 && isDashed(l) && l.nodeIds.length === 0);
     // Exclude milestone guidelines (none configured here), so every width-0
     // undashed-unset line is a month-boundary grid line.
     expect(verticalLines).toHaveLength(4);

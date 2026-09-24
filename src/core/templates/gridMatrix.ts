@@ -60,7 +60,7 @@ export function layoutGridMatrix(outline: OutlineNode[], title: string): LayoutN
       fontWeight: "bold",
       textColorSlot: 0,
     }));
-    shapes.push(decoration({ x: 0, y: TITLE_HEIGHT, width: TITLE_WIDTH, height: 0, kind: "line", dashed: false }));
+    shapes.push(decoration({ x: 0, y: TITLE_HEIGHT, width: TITLE_WIDTH, height: 0, kind: "line", paint: { stroke: 0 } }));
   }
 
   // Tiles are pure structure, not tied to any outline node - always
@@ -74,7 +74,7 @@ export function layoutGridMatrix(outline: OutlineNode[], title: string): LayoutN
         width: TILE_WIDTH,
         height: TILE_HEIGHT,
         kind: "rect",
-        neutralFill: true,
+        paint: "neutral",
       }));
     });
   });
@@ -110,7 +110,7 @@ export function layoutGridMatrix(outline: OutlineNode[], title: string): LayoutN
       width: gridWidth,
       height: PILL_THICKNESS,
       kind: "rect",
-      fillColorSlot: 3,
+      paint: { fill: 3 },
       cornerRadius: PILL_THICKNESS / 2,
     }));
     labels.push(textNode(xAxis, 0, {
@@ -133,7 +133,7 @@ export function layoutGridMatrix(outline: OutlineNode[], title: string): LayoutN
       width: PILL_THICKNESS,
       height: gridHeight,
       kind: "rect",
-      fillColorSlot: 3,
+      paint: { fill: 3 },
       cornerRadius: PILL_THICKNESS / 2,
     }));
     // No vertical writing mode for text shapes, so the name is a horizontal

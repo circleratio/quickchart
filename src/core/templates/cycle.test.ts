@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { layoutCycle } from "./cycle";
 import type { OutlineNode } from "../model/document";
+import { fillSlotOf } from "./layoutNode";
 
 function node(id: string, text: string, children: OutlineNode[] = []): OutlineNode {
   return { id, text, children };
@@ -24,7 +25,7 @@ describe("layoutCycle", () => {
     const polys = arrows(layout);
     expect(polys.map((p) => p.nodeIds[0])).toEqual(["a", "b", "c"]);
     for (const p of polys) {
-      expect(p.fillColorSlot).toBeDefined();
+      expect(fillSlotOf(p)).toBeDefined();
       for (const pt of p.points!) {
         expect(pt.x).toBeGreaterThanOrEqual(0);
         expect(pt.x).toBeLessThanOrEqual(1);
@@ -68,9 +69,9 @@ describe("layoutCycle", () => {
 
   it("darkens the second half of the loop", () => {
     const polys = arrows(layoutCycle([node("a", "A"), node("b", "B"), node("c", "C"), node("d", "D")], "", false));
-    expect(polys[0].fillColorSlot).toBe(polys[1].fillColorSlot);
-    expect(polys[2].fillColorSlot).toBe(polys[3].fillColorSlot);
-    expect(polys[0].fillColorSlot).not.toBe(polys[2].fillColorSlot);
+    expect(fillSlotOf(polys[0])).toBe(fillSlotOf(polys[1]));
+    expect(fillSlotOf(polys[2])).toBe(fillSlotOf(polys[3]));
+    expect(fillSlotOf(polys[0])).not.toBe(fillSlotOf(polys[2]));
   });
 
   describe("with an entry", () => {

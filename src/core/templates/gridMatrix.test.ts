@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { layoutGridMatrix } from "./gridMatrix";
 import type { OutlineNode } from "../model/document";
+import { paintOf, fillSlotOf, isDashed } from "./layoutNode";
 
 function node(id: string, text: string, children: OutlineNode[] = []): OutlineNode {
   return { id, text, children };
@@ -13,7 +14,7 @@ function axes(columns: string[], rows: string[]): OutlineNode[] {
   ];
 }
 
-const tiles = (layout: ReturnType<typeof layoutGridMatrix>) => layout.filter((l) => l.kind === "rect" && l.neutralFill);
+const tiles = (layout: ReturnType<typeof layoutGridMatrix>) => layout.filter((l) => l.kind === "rect" && paintOf(l) === "neutral");
 
 describe("layoutGridMatrix", () => {
   it("returns nothing for an empty outline", () => {
@@ -51,7 +52,7 @@ describe("layoutGridMatrix", () => {
     expect(xName.rotation).toBeUndefined();
     expect(yName.rotation).toBe(-90);
 
-    const pills = layout.filter((l) => l.kind === "rect" && l.fillColorSlot !== undefined);
+    const pills = layout.filter((l) => l.kind === "rect" && fillSlotOf(l) !== undefined);
     expect(pills).toHaveLength(2);
     const yPill = pills.find((p) => p.height > p.width)!;
     // Rotated around its own center, the name's box lands on the pill's box.
@@ -67,7 +68,7 @@ describe("layoutGridMatrix", () => {
     expect(without.some((l) => l.kind === "line")).toBe(false);
     const title = withTitle.find((l) => l.text === "日本の製油所の成長")!;
     expect(title.nodeIds).toEqual([]);
-    expect(withTitle.some((l) => l.kind === "line" && l.dashed === false)).toBe(true);
+    expect(withTitle.some((l) => l.kind === "line" && !isDashed(l))).toBe(true);
     expect(tiles(withTitle)[0].y).toBeGreaterThan(tiles(without)[0].y);
   });
 });

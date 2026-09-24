@@ -59,8 +59,7 @@ export function layoutHorizontalFlow(outline: OutlineNode[]): LayoutNode[] {
       width: CIRCLE_DIAMETER,
       height: CIRCLE_DIAMETER,
       kind: "ellipse",
-      dashed: isFirst,
-      fillColorSlot: colorSlot,
+      paint: colorSlot === undefined ? { stroke: 0, dashed: true } : { fill: colorSlot },
     }));
 
     // The step's own label (root) plus any extra lines (children), stacked
@@ -101,7 +100,7 @@ export function layoutHorizontalFlow(outline: OutlineNode[]): LayoutNode[] {
       width: nextX - circleRights[i],
       height: 0,
       kind: "line",
-      dashed: false,
+      paint: { stroke: 0 },
       arrowhead: true,
     }));
   }

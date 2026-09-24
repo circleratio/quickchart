@@ -2,6 +2,28 @@ import type { OutlineNode } from "../model/document";
 import type { Point } from "../model/shape";
 import type { ThemeColorSlot } from "../model/style";
 
+// How a shape is painted. Each value means the same thing on every kind that
+// accepts it, so a pattern states the look it wants rather than toggling
+// kind-specific flags (see styleFor in sync.ts, which maps these onto
+// style.ts's functions).
+export type Paint =
+  // Solid theme color, border in the same color (horizontalFlow's step
+  // circles, beforeAfter's TOBE panel, pyramidChart's bands; for a "heading",
+  // the cell's own background).
+  | { fill: ThemeColorSlot }
+  // Unfilled, stroked in a theme color - an outline for a closed shape
+  // (venn's circles, matrix's quadrant boxes, chevronFlow's open-sided
+  // outlines), the line itself for a "line" (row separators, rules).
+  | { stroke: ThemeColorSlot; dashed?: boolean }
+  // A fixed, theme-independent light gray fill (style.ts's
+  // neutralPanelStyle) - structure or a deliberately unbranded state that
+  // must not take the theme's color: beforeAfter's ASIS panel,
+  // beforeAfterHorizontal's connector arrows, gridMatrix's tiles.
+  | "neutral"
+  // A "line" drawn as a thick, fixed-gray axis (style.ts's
+  // timelineTrackStyle) - timeline's single vertical track.
+  | "track";
+
 // The primitive every pattern layout produces: one generated shape's
 // geometry, styling hints and outline binding, before sync.ts turns it into
 // an actual Shape (see regenerateBlockShapes/styleFor there).
@@ -15,35 +37,35 @@ export interface LayoutNode {
   y: number;
   width: number;
   height: number;
-  // "text" (default) generates a labeled box; "ellipse"/"rect" generate an
-  // unlabeled shape - by default a plain outline (Venn's set circles - see
-  // venn.ts; a matrix quadrant's background square - see matrix.ts), or a
-  // solid fill when `fillColorSlot` is set (horizontalFlow's step circles -
-  // see horizontalFlow.ts; unlike "heading" below, there's no text on the
-  // shape itself, since it has none of its own - any label is a separate
-  // "label"-kind shape drawn on top); "label" generates
-  // borderless text drawn on top of another shape rather than its own layer
-  // (Venn's set names; headingBullets' bullet items; bulletMatrix's title/
-  // detail lines within a cell); "heading" generates a solid-filled,
-  // borderless text cell that is its own background (headingBullets' row
-  // heading; bulletMatrix's row/column headers); "line" generates a plain
-  // (typically dashed) line, not a labeled shape (headingBullets' row
-  // separators; bulletMatrix's row/column grid lines); "polygon" generates a
-  // solid-filled, unlabeled closed shape (pyramidChart's pyramid-slice bands -
-  // see pyramidChart.ts), using the `points` field below.
+  // What gets generated:
+  // - "text" (default): a labeled box in the theme's default bordered style
+  // - "label": borderless text drawn on top of another shape rather than its
+  //   own layer (venn's set names, bullet items, a cell's title/detail lines)
+  // - "heading": a text cell that is its own solid-filled background
+  //   (headingBullets' row heading, bulletMatrix's row/column headers)
+  // - "ellipse"/"rect"/"polygon": an unlabeled closed shape; any label is a
+  //   separate "label" drawn on top
+  // - "line": a plain line from (x, y) to (x + width, y + height)
   kind?: "text" | "ellipse" | "rect" | "label" | "heading" | "line" | "polygon";
-  // Horizontal text alignment for a text-bearing kind ("text"/"label"/
-  // "heading"); defaults to "center" when omitted (see regenerateBlockShapes
-  // in sync.ts). headingBullets'/bulletMatrix's bullet items use "left",
-  // matching normal bulleted-list reading order.
+
+  // How the shape is painted, for every kind except "text"/"label" (whose
+  // look is fixed). Defaults when omitted: an outline in primary[0] for
+  // "ellipse"/"rect", a primary[0] fill for "polygon"/"heading", and a dashed
+  // primary[2] separator for "line".
+  paint?: Paint;
+
+  // --- Text styling, for the text-bearing kinds ("text"/"label"/"heading") ---
+
+  // Horizontal text alignment; defaults to "center" (see
+  // regenerateBlockShapes in sync.ts). Bullet items use "left", matching
+  // normal bulleted-list reading order.
   align?: "left" | "center" | "right";
-  // Overrides the kind's own default font size (see regenerateBlockShapes in
-  // sync.ts) - e.g. Venn's set name wants a larger, title-like size than a
-  // regular "label".
+  // Overrides the kind's own default font size - e.g. Venn's set name wants a
+  // larger, title-like size than a regular "label".
   fontSize?: number;
   // The below three override individual aspects of the kind's own default
-  // style (see styleFor in sync.ts) - e.g. bulletMatrix's title line wants
-  // "label"'s usual borderless text, just bolder and underlined.
+  // style - e.g. bulletMatrix's title line wants "label"'s usual borderless
+  // text, just bolder and underlined.
   fontWeight?: "normal" | "bold";
   italic?: boolean;
   underline?: boolean;
@@ -53,83 +75,33 @@ export interface LayoutNode {
   textColorSlot?: ThemeColorSlot;
   // Overrides the kind's own default text color by contrast against the
   // theme color at this slot, instead of a fixed color (see style.ts's
-  // contrastTextColor) - for a label drawn on top of a shape whose own fill
-  // varies enough that neither a fixed dark nor a fixed light text color
-  // stays legible everywhere. pyramidChart's item-name/scale labels set this
-  // to their own band's fillColorSlot (pyramidChart.ts), since the band goes
-  // from a dark shade at the apex to a light one at the base. Takes priority
-  // over `textColorSlot` when both are set.
+  // contrastTextColor) - for text on top of a fill that varies enough that
+  // neither a fixed dark nor a fixed light text color stays legible
+  // everywhere. pyramidChart's item-name/scale labels pass their own band's
+  // fill slot, since the bands go from a dark shade at the apex to a light
+  // one at the base. Takes priority over `textColorSlot` when both are set.
   contrastBgColorSlot?: ThemeColorSlot;
-  // For a "heading" kind: which theme color to fill the cell with (see
-  // headingStyle in style.ts). Defaults to primary[0] (headingBullets' navy);
-  // bulletMatrix's row/column headers pass a different slot so all three
-  // kinds of heading (this pattern's two, plus headingBullets') read as
-  // visually distinct roles. For an "ellipse"/"rect" kind: set to fill the
-  // shape solidly (style.ts's filledShapeStyle) instead of the default
-  // unfilled outline - undefined keeps it unfilled (horizontalFlow's first,
-  // "casual/optional" step circle - see horizontalFlow.ts).
-  fillColorSlot?: ThemeColorSlot;
-  // For an "ellipse"/"rect" kind with no `fillColorSlot`: fills with
-  // `style.ts`'s `neutralPanelStyle` (a fixed, theme-independent light gray)
-  // instead of leaving it unfilled - beforeAfter's "ASIS" cell background
-  // (doc/spec.md §6.2.12), which is deliberately NOT theme-colored (see
-  // neutralPanelStyle's own doc comment). Ignored when `fillColorSlot` is
-  // set. Undefined/false behaves as the normal unfilled outline. For a
-  // "polygon" kind (which otherwise always uses `fillColorSlot`'s themed
-  // fill, defaulting to primary[0] - see headingStyle): true fills with
-  // `neutralPanelStyle` instead - beforeAfterHorizontal's connector arrow
-  // (doc/spec.md §6.2.13), a structural connector like a tree's connector
-  // line rather than themed content, so it stays neutral regardless of the
-  // active theme (same reasoning as timelineTrackStyle).
-  neutralFill?: boolean;
-  // Set on a "label" kind to render this literal prefix (e.g. "• ", "- ")
-  // ahead of the text without it being part of the shape's editable content
-  // (see shape.ts's TextShape.bulletMarker for why).
+  // Renders this literal prefix (e.g. "• ", "- ") ahead of the text without
+  // it being part of the shape's editable content (see shape.ts's
+  // TextShape.bulletMarker for why).
   bulletMarker?: string;
-  // For a "polygon" kind: vertices as fractions (0..1) of this LayoutNode's
-  // own width/height, forwarded verbatim to PolygonShape.points (see
-  // shape.ts) - see pyramidChart.ts for how the pyramid taper is computed.
+
+  // --- Kind-specific geometry ---
+
+  // "polygon": vertices as fractions (0..1) of this node's own width/height,
+  // forwarded verbatim to PolygonShape.points (see parts/polygon.ts).
   points?: Point[];
-  // For a "line" kind: false renders a solid rule (see style.ts's ruleStyle -
-  // pyramidChart's title/header divider) instead of the default dashed
-  // separator (style.ts's separatorStyle, used by headingBullets/bulletMatrix
-  // and by pyramidChart's own row separators). Undefined behaves as true.
-  // For an "ellipse"/"rect" kind, the opposite default applies: true dashes
-  // the (otherwise solid) outline/border - horizontalFlow's first step
-  // circle, undefined/false behaves as a plain solid border.
-  dashed?: boolean;
-  // For a "line" kind: true generates a directional ConnectorShape
-  // (`type: "arrow"`, marker-tipped - see ConnectorRenderer.tsx) from (x, y)
-  // to (x + width, y + height) instead of a plain undirected LineShape -
-  // schedule.ts's simplified dependency arrows (doc/spec.md §6.2.6).
-  // Undefined/false behaves as a plain line.
+  // "line": generates a directional ConnectorShape (`type: "arrow"`,
+  // marker-tipped - see ConnectorRenderer.tsx) instead of a plain undirected
+  // LineShape - schedule.ts's dependency arrows, the flow patterns' step
+  // arrows.
   arrowhead?: boolean;
-  // For a "rect" kind: rounded corner radius, forwarded verbatim to
-  // RectShape.cornerRadius (see shape.ts) - flowScheduleHorizontal's step
-  // cards (doc/spec.md §6.2.10), the first template shape to use this (every
-  // other "rect" so far, e.g. matrix's quadrant background, is
-  // square-cornered). Undefined/0 behaves as a plain square corner.
+  // "rect": rounded corner radius, forwarded verbatim to
+  // RectShape.cornerRadius (see shape.ts).
   cornerRadius?: number;
-  // For a "line" kind: renders with `style.ts`'s `timelineTrackStyle` (a
-  // fixed, theme-independent gray, thicker than the usual theme-colored
-  // dashed/solid rule) instead of the usual dashed/solid styling - timeline's
-  // single vertical axis line (doc/spec.md §6.2.11), which reads as neutral
-  // structure like a tree connector rather than themed chart content.
-  // Undefined/false behaves as a normal "line".
-  trackStyle?: boolean;
-  // For a "polygon" kind: renders it unfilled, stroked in theme.primary[slot]
-  // (style.ts's strokeOnlyStyle), instead of the usual solid themed fill -
-  // chevronFlow's chevron and body-box outlines (doc/spec.md §6.2.14), which
-  // retrace their own path so one side stays open (see chevronFlow.ts).
-  // Takes priority over `fillColorSlot`/`neutralFill`. For an "ellipse"/
-  // "rect" kind with no `fillColorSlot`: the same unfilled outline, in this
-  // shade instead of outlineStyle's fixed primary[0] - matrix's quadrant
-  // boxes and outlined badge (doc/spec.md §6.2.1).
-  strokeColorSlot?: ThemeColorSlot;
   // Rotation in degrees around the node's own center, forwarded verbatim to
   // ShapeBase.rotation - gridMatrix's vertical axis name (doc/spec.md
-  // §6.2.16), since text shapes have no vertical writing mode. Undefined
-  // behaves as 0.
+  // §6.2.16), since text shapes have no vertical writing mode.
   rotation?: number;
 }
 
@@ -164,4 +136,40 @@ export function fixedText(text: string, props: LayoutNodeProps): LayoutNode {
 // connector arrows, background panels) - untracked, like fixedText.
 export function decoration(props: LayoutNodeProps): LayoutNode {
   return { nodeIds: [], text: "", depth: 0, ...props };
+}
+
+// A node's paint with the per-kind default applied (see LayoutNode.paint);
+// undefined for "text"/"label", whose look isn't paint-driven.
+export function paintOf(node: LayoutNode): Paint | undefined {
+  if (node.paint !== undefined) return node.paint;
+  switch (node.kind) {
+    case "ellipse":
+    case "rect":
+      return { stroke: 0 };
+    case "polygon":
+    case "heading":
+      return { fill: 0 };
+    case "line":
+      return { stroke: 2, dashed: true };
+    default:
+      return undefined;
+  }
+}
+
+// The theme slot a node is filled with, if it's painted with a theme fill.
+export function fillSlotOf(node: LayoutNode): ThemeColorSlot | undefined {
+  const paint = paintOf(node);
+  return typeof paint === "object" && "fill" in paint ? paint.fill : undefined;
+}
+
+// The theme slot a node is stroked with, if it's painted as a theme outline
+// or line.
+export function strokeSlotOf(node: LayoutNode): ThemeColorSlot | undefined {
+  const paint = paintOf(node);
+  return typeof paint === "object" && "stroke" in paint ? paint.stroke : undefined;
+}
+
+export function isDashed(node: LayoutNode): boolean {
+  const paint = paintOf(node);
+  return typeof paint === "object" && "stroke" in paint && paint.dashed === true;
 }

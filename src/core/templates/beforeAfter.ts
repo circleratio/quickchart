@@ -99,7 +99,7 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
   // ordering reason as matrix.ts's background square. Untracked (`nodeIds:
   // []`): "ASIS"/"TOBE" are fixed structural furniture, not derived from any
   // outline node, same reasoning as flowSchedule's title.
-  result.push(decoration({ x: 0, y: asisTop, width: SIDEBAR_WIDTH, height: asisHeight, kind: "rect", fillColorSlot: 0 }));
+  result.push(decoration({ x: 0, y: asisTop, width: SIDEBAR_WIDTH, height: asisHeight, kind: "rect", paint: { fill: 0 } }));
   result.push(fixedText(ASIS_LABEL, {
     x: 0,
     y: asisTop,
@@ -112,7 +112,7 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
     contrastBgColorSlot: 0,
   }));
 
-  result.push(decoration({ x: 0, y: tobeTop, width: SIDEBAR_WIDTH, height: tobeHeight, kind: "rect", fillColorSlot: 1 }));
+  result.push(decoration({ x: 0, y: tobeTop, width: SIDEBAR_WIDTH, height: tobeHeight, kind: "rect", paint: { fill: 1 } }));
   result.push(fixedText(TOBE_LABEL, {
     x: 0,
     y: tobeTop,
@@ -130,7 +130,7 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
     const asis = topic.children[0];
     const tobe = topic.children[1];
 
-    // ASIS cell background - fixed neutral gray (`neutralFill`, see
+    // ASIS cell background - fixed neutral gray (`"neutral"` paint, see
     // layoutNode.ts/style.ts), not this document's color theme: it reads as
     // the "problem" state, which shouldn't carry the brand color the TOBE
     // cell (the theme-colored future state) gets below.
@@ -140,7 +140,7 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
       width: COLUMN_WIDTH,
       height: asisHeight,
       kind: "rect",
-      neutralFill: true,
+      paint: "neutral",
       cornerRadius: CORNER_RADIUS,
     }));
 
@@ -191,7 +191,7 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
       height: ARROW_SIZE,
       kind: "polygon",
       points: DOWN_TRIANGLE_POINTS,
-      fillColorSlot: 0,
+      paint: { fill: 0 },
     }));
 
     // TOBE cell background - the theme's own palest shade (unlike ASIS's
@@ -202,7 +202,7 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
       width: COLUMN_WIDTH,
       height: tobeHeight,
       kind: "rect",
-      fillColorSlot: 4,
+      paint: { fill: 4 },
       cornerRadius: CORNER_RADIUS,
     }));
 

@@ -121,7 +121,7 @@ export function layoutBulletMatrix(outline: OutlineNode[], columnHeaders: string
       kind: "heading",
       fontSize: HEADER_FONT_SIZE,
       italic: true,
-      fillColorSlot: 1,
+      paint: { fill: 1 },
     }));
   });
 
@@ -134,7 +134,7 @@ export function layoutBulletMatrix(outline: OutlineNode[], columnHeaders: string
       height: height - ROW_GAP,
       kind: "heading",
       fontSize: HEADER_FONT_SIZE,
-      fillColorSlot: "accent",
+      paint: { fill: "accent" },
     }));
 
     cells.forEach((cell, i) => {

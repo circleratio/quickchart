@@ -243,7 +243,7 @@ export function layoutSchedule(outline: OutlineNode[], params: ScheduleParams): 
         width: x2 - x1,
         height: y2 - y1,
         kind: "line",
-        dashed: false,
+        paint: { stroke: 0 },
         arrowhead,
       }));
     }
@@ -274,7 +274,7 @@ export function layoutSchedule(outline: OutlineNode[], params: ScheduleParams): 
       height: MILESTONE_TRIANGLE_SIZE,
       kind: "polygon",
       points: DOWN_TRIANGLE_POINTS,
-      fillColorSlot: 0,
+      paint: { fill: 0 },
     }));
   });
 

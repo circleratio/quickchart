@@ -71,9 +71,9 @@ export function layoutFlowScheduleHorizontal(outline: OutlineNode[], title: stri
     // The card's own outline first, so it renders underneath the number/
     // label/description labels drawn on top of it (see regenerateBlockShapes
     // in sync.ts) - same ordering reason as matrix.ts's background square.
-    // Unfilled (no fillColorSlot) and undashed (kind "rect"'s own default is
-    // a solid border - see layoutNode.ts's `dashed` doc) - just a rounded
-    // outline, matching the reference image's cards.
+    // No paint, so it gets a "rect"'s default solid primary[0] outline (see
+    // layoutNode.ts's paintOf) - just a rounded outline, matching the
+    // reference image's cards.
     result.push(shapeNode(step, {
       x,
       y,
@@ -132,7 +132,7 @@ export function layoutFlowScheduleHorizontal(outline: OutlineNode[], title: stri
         height: TRIANGLE_SIZE,
         kind: "polygon",
         points: RIGHT_TRIANGLE_POINTS,
-        fillColorSlot: 0,
+        paint: { fill: 0 },
       }));
     }
   });
