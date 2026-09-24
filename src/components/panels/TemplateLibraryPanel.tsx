@@ -13,16 +13,28 @@ type PatternEntry = ({ kind: "leaf" } & LeafPattern) | { kind: "group"; label: s
 // The "スケジュール" group bundles the pattern's own vertical/horizontal
 // variants as a flat submenu rather than nesting a further cascade level
 // (decided with the user: a 2nd cascade level wasn't worth the extra clicks
-// for only 2 variants each).
+// for only 2 variants each). "ツリー構造", "マトリクス構造" and "サイクル図" group related
+// patterns the same way. All groups come first, followed by the standalone
+// patterns (doc/requirement.md §3.2).
 const PATTERN_ENTRIES: PatternEntry[] = [
-  { kind: "leaf", id: "pyramid", label: "ツリー図", available: true },
-  { kind: "leaf", id: "logicTree", label: "ロジックツリー図", available: true },
-  { kind: "leaf", id: "matrix", label: "４象限マトリクス", available: true },
-  { kind: "leaf", id: "gridMatrix", label: "N×Nマトリクス", available: true },
-  { kind: "leaf", id: "venn", label: "ベン図", available: true },
-  { kind: "leaf", id: "headingBullets", label: "見出し付き箇条書き", available: true },
-  { kind: "leaf", id: "bulletMatrix", label: "箇条書きマトリクス", available: true },
-  { kind: "leaf", id: "pyramidChart", label: "ピラミッド図", available: true },
+  {
+    kind: "group",
+    label: "ツリー構造",
+    children: [
+      { id: "pyramid", label: "ツリー図", available: true },
+      { id: "logicTree", label: "ロジックツリー図", available: true },
+      { id: "headingBullets", label: "見出し付き箇条書き", available: true },
+    ],
+  },
+  {
+    kind: "group",
+    label: "マトリクス構造",
+    children: [
+      { id: "matrix", label: "４象限マトリクス", available: true },
+      { id: "gridMatrix", label: "N×Nマトリクス", available: true },
+      { id: "bulletMatrix", label: "箇条書きマトリクス", available: true },
+    ],
+  },
   {
     kind: "group",
     label: "スケジュール",
@@ -44,6 +56,8 @@ const PATTERN_ENTRIES: PatternEntry[] = [
       { id: "cycle", label: "サイクル図（円のみ）", available: true },
     ],
   },
+  { kind: "leaf", id: "venn", label: "ベン図", available: true },
+  { kind: "leaf", id: "pyramidChart", label: "ピラミッド図", available: true },
   { id: "beforeAfter", label: "ビフォーアフター（縦）", available: true, kind: "leaf" },
   { id: "beforeAfterHorizontal", label: "ビフォーアフター（横）", available: true, kind: "leaf" },
 ];
