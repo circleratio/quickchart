@@ -69,6 +69,12 @@ quickchart/
 │  │  │  ├─ outlineParser.ts        # 階層テキスト(アウトライン記法)パーサ
 │  │  │  ├─ layoutNode.ts           # LayoutNode 型(各パターンの出力単位)と生成ヘルパ(textNode/shapeNode/fixedText/decoration)
 │  │  │  ├─ treeLayout.ts           # ツリー配置アルゴリズム(pyramid/logicTree 共用)
+│  │  │  ├─ parts/                  # 複数パターンで共通して使う部品(LayoutNode を組み立てる)
+│  │  │  │  ├─ ruledTitle.ts        # 両脇に破線を引いたタイトル帯
+│  │  │  │  ├─ headingRows.ts       # 見出しセル+内容+行間の区切り線からなる行の並び
+│  │  │  │  ├─ lineStack.ts         # 項目を一定間隔で縦に積むラベル列
+│  │  │  │  ├─ numbering.ts         # 位置から振る連番("01" 等)
+│  │  │  │  └─ polygon.ts           # 三角形の頂点定義、絶対座標→相対座標の多角形変換
 │  │  │  ├─ pyramid.ts              # ピラミッド生成規則
 │  │  │  ├─ logicTree.ts            # ロジックツリー生成規則
 │  │  │  ├─ matrix.ts               # マトリクス生成規則

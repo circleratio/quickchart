@@ -1,7 +1,8 @@
 import type { OutlineNode } from "../model/document";
-import type { Point } from "../model/shape";
 import { decoration, fixedText, shapeNode, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
+import { lineStack } from "./parts/lineStack";
+import { DOWN_TRIANGLE_POINTS } from "./parts/polygon";
 
 const SIDEBAR_WIDTH = 140;
 const COLUMN_WIDTH = 340;
@@ -38,15 +39,6 @@ const SIDEBAR_LABEL_FONT_SIZE = 20;
 
 const ASIS_LABEL = "AS-IS";
 const TOBE_LABEL = "TO-BE";
-
-// Downward arrow, as vertex fractions of its own bounding box (see
-// shape.ts's PolygonShape) - same idea as schedule.ts's downward milestone
-// triangle.
-const DOWN_TRIANGLE_POINTS: Point[] = [
-  { x: 0, y: 0 },
-  { x: 1, y: 0 },
-  { x: 0.5, y: 1 },
-];
 
 // "ビフォーアフター（縦）" (doc/spec.md §6.2.12): a row of before/after
 // comparison columns (e.g. a pain point and how a product resolves it) -
@@ -178,18 +170,16 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
     const descLines = asis?.children ?? [];
     if (descLines.length > 0) {
       cy += HEADLINE_TO_DESC_GAP;
-      descLines.forEach((desc, j) => {
-        result.push(textNode(desc, 2, {
+      result.push(
+        ...lineStack(descLines, {
           x: x + CELL_PADDING_X,
-          y: cy + j * DESC_LINE_HEIGHT,
+          y: cy,
           width: COLUMN_WIDTH - CELL_PADDING_X * 2,
-          height: DESC_LINE_HEIGHT,
-          kind: "label",
-          align: "left",
-          fontSize: DESC_FONT_SIZE,
-          textColorSlot: 2,
-        }));
-      });
+          lineHeight: DESC_LINE_HEIGHT,
+          depth: 2,
+          props: { kind: "label", align: "left", fontSize: DESC_FONT_SIZE, textColorSlot: 2 },
+        }),
+      );
     }
 
     result.push(decoration({
@@ -215,20 +205,16 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
     }));
 
     const tobeLines = tobe ? [tobe, ...tobe.children] : [];
-    const ty = tobeTop + CELL_PADDING_Y;
-    tobeLines.forEach((line, j) => {
-      result.push(textNode(line, j === 0 ? 1 : 2, {
+    result.push(
+      ...lineStack(tobeLines, {
         x: x + CELL_PADDING_X,
-        y: ty + j * TOBE_LINE_HEIGHT,
+        y: tobeTop + CELL_PADDING_Y,
         width: COLUMN_WIDTH - CELL_PADDING_X * 2,
-        height: TOBE_LINE_HEIGHT,
-        kind: "label",
-        align: "center",
-        fontWeight: "bold",
-        fontSize: TOBE_FONT_SIZE,
-        textColorSlot: 1,
-      }));
-    });
+        lineHeight: TOBE_LINE_HEIGHT,
+        depth: (j) => (j === 0 ? 1 : 2),
+        props: { kind: "label", align: "center", fontWeight: "bold", fontSize: TOBE_FONT_SIZE, textColorSlot: 1 },
+      }),
+    );
   });
 
   return result;

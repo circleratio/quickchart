@@ -1,7 +1,8 @@
 import type { OutlineNode } from "../model/document";
 import type { ThemeColorSlot } from "../model/style";
-import { decoration, shapeNode, textNode } from "./layoutNode";
+import { decoration, shapeNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
+import { lineStack } from "./parts/lineStack";
 
 const CIRCLE_DIAMETER = 168;
 // Horizontal gap between circles, doubling as the connector arrow's length.
@@ -69,19 +70,22 @@ export function layoutHorizontalFlow(outline: OutlineNode[]): LayoutNode[] {
     const contentHeight = lines.length * LABEL_LINE_HEIGHT;
     const startY = centerY - contentHeight / 2;
 
-    lines.forEach((line, i) => {
-      result.push(textNode(line, i === 0 ? 0 : 1, {
+    result.push(
+      ...lineStack(lines, {
         x: labelX,
-        y: startY + i * LABEL_LINE_HEIGHT,
+        y: startY,
         width: LABEL_WIDTH,
-        height: LABEL_LINE_HEIGHT,
-        kind: "label",
-        align: "center",
-        fontSize: LABEL_FONT_SIZE,
-        fontWeight: "bold",
-        ...(colorSlot !== undefined ? { contrastBgColorSlot: colorSlot } : {}),
-      }));
-    });
+        lineHeight: LABEL_LINE_HEIGHT,
+        depth: (i) => (i === 0 ? 0 : 1),
+        props: {
+          kind: "label",
+          align: "center",
+          fontSize: LABEL_FONT_SIZE,
+          fontWeight: "bold",
+          ...(colorSlot !== undefined ? { contrastBgColorSlot: colorSlot } : {}),
+        },
+      }),
+    );
   });
 
   // One solid arrow per consecutive circle pair, from one's right edge to the

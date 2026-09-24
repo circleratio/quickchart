@@ -1,6 +1,7 @@
 import type { OutlineNode } from "../model/document";
 import { decoration, fixedText, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
+import { DOWN_TRIANGLE_POINTS } from "./parts/polygon";
 
 const ROW_NUMBER_WIDTH = 44;
 const ROW_LABEL_WIDTH = 260;
@@ -270,11 +271,7 @@ export function layoutSchedule(outline: OutlineNode[], params: ScheduleParams): 
       width: MILESTONE_TRIANGLE_SIZE,
       height: MILESTONE_TRIANGLE_SIZE,
       kind: "polygon",
-      points: [
-        { x: 0, y: 0 },
-        { x: 1, y: 0 },
-        { x: 0.5, y: 1 },
-      ],
+      points: DOWN_TRIANGLE_POINTS,
       fillColorSlot: 0,
     }));
   });

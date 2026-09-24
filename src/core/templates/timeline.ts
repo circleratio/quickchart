@@ -1,6 +1,7 @@
 import type { OutlineNode } from "../model/document";
-import { decoration, fixedText, shapeNode, textNode } from "./layoutNode";
+import { decoration, shapeNode, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
+import { ruledTitle } from "./parts/ruledTitle";
 
 const DOT_SIZE = 18;
 const DOT_GAP = 26;
@@ -21,7 +22,6 @@ const TITLE_HEIGHT = 34;
 const TITLE_GAP = 44;
 const TITLE_BAND_WIDTH = 300;
 const TITLE_FONT_SIZE = 28;
-const TITLE_LINE_GAP = 16;
 
 // "タイムライン" (doc/spec.md §6.2.11): a vertical list of time-stamped events
 // (e.g. a day's schedule) - a filled dot per event sitting on one continuous
@@ -34,41 +34,12 @@ const TITLE_LINE_GAP = 16;
 // free text rather than derived, since a schedule's times aren't evenly
 // spaced or auto-incrementing.
 export function layoutTimeline(outline: OutlineNode[], title: string): LayoutNode[] {
-  const result: LayoutNode[] = [];
-  let y = 0;
-
-  const trimmedTitle = title.trim();
-  if (trimmedTitle) {
-    const bandWidth = Math.min(TITLE_BAND_WIDTH, TOTAL_WIDTH);
-    const bandX = (TOTAL_WIDTH - bandWidth) / 2;
-    result.push(fixedText(trimmedTitle, {
-      x: bandX,
-      y: 0,
-      width: bandWidth,
-      height: TITLE_HEIGHT,
-      kind: "label",
-      align: "center",
-      fontWeight: "bold",
-      fontSize: TITLE_FONT_SIZE,
-      // No textColorSlot override - see flowSchedule.ts's own title for why
-      // (reads the same primary color as everything else, not an accent).
-    }));
-
-    const lineY = TITLE_HEIGHT / 2;
-    const leftWidth = bandX - TITLE_LINE_GAP;
-    if (leftWidth > 0) {
-      result.push(decoration({ x: 0, y: lineY, width: leftWidth, height: 0, kind: "line" }));
-      result.push(decoration({
-        x: bandX + bandWidth + TITLE_LINE_GAP,
-        y: lineY,
-        width: TOTAL_WIDTH - (bandX + bandWidth + TITLE_LINE_GAP),
-        height: 0,
-        kind: "line",
-      }));
-    }
-
-    y = TITLE_HEIGHT + TITLE_GAP;
-  }
+  const result: LayoutNode[] = ruledTitle(title, TOTAL_WIDTH, {
+    bandWidth: TITLE_BAND_WIDTH,
+    height: TITLE_HEIGHT,
+    fontSize: TITLE_FONT_SIZE,
+  });
+  const y = result.length > 0 ? TITLE_HEIGHT + TITLE_GAP : 0;
 
   if (outline.length === 0) return result;
 

@@ -1,7 +1,9 @@
 import type { OutlineNode } from "../model/document";
-import type { Point } from "../model/shape";
-import { decoration, fixedText, textNode } from "./layoutNode";
+import { decoration, fixedText } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
+import { headingRows } from "./parts/headingRows";
+import { lineStack, lineStackHeight } from "./parts/lineStack";
+import { RIGHT_TRIANGLE_POINTS } from "./parts/polygon";
 
 const ROW_HEADER_WIDTH = 220;
 const COLUMN_WIDTH = 620;
@@ -20,20 +22,8 @@ const ROW_PADDING_Y = 18;
 const ROW_MIN_HEIGHT = 64;
 const CONTENT_PADDING_X = 20;
 const CONTENT_RIGHT_PADDING = 20;
-// Trimmed off the bottom of each row heading cell so adjacent rows' row
-// headings don't visually fuse into one solid band - same reasoning as
-// headingBullets' HEADING_GAP (see headingBullets.ts).
-const HEADING_GAP = 4;
 
 const TOTAL_WIDTH = ROW_HEADER_WIDTH + COLUMN_WIDTH * 2 + ARROW_COLUMN_WIDTH;
-
-// Right-pointing triangle, as vertex fractions of its own bounding box (see
-// shape.ts's PolygonShape) - same shape as flowScheduleHorizontal's connector.
-const RIGHT_TRIANGLE_POINTS: Point[] = [
-  { x: 0, y: 0 },
-  { x: 0, y: 1 },
-  { x: 1, y: 0.5 },
-];
 
 // A "before"/"after" group's bullet lines: its OWN text is the first line,
 // its children are the rest (see the doc comment below for why) - same
@@ -91,81 +81,50 @@ export function layoutBeforeAfterHorizontal(outline: OutlineNode[], beforeLabel:
   }));
   result.push(decoration({ x: afterX, y: 0, width: COLUMN_WIDTH, height: 0, kind: "line", dashed: false }));
 
-  let y = 0;
-  outline.forEach((row, rowIndex) => {
-    const beforeItems = groupItems(row.children[0]);
-    const afterItems = groupItems(row.children[1]);
-    const itemCount = Math.max(beforeItems.length, afterItems.length);
-    const itemsHeight = itemCount > 0 ? itemCount * (ITEM_HEIGHT + ITEM_GAP) - ITEM_GAP : 0;
-    const rowHeight = Math.max(ROW_MIN_HEIGHT, itemsHeight + ROW_PADDING_Y * 2);
-
-    // The row heading cell - a single shape that's both its own background
-    // and its own label (kind: "heading"), same reasoning as headingBullets'
-    // own row heading (see headingBullets.ts).
-    result.push(textNode(row, 0, {
-      x: 0,
-      y,
-      width: ROW_HEADER_WIDTH,
-      height: rowHeight - HEADING_GAP,
-      kind: "heading",
-    }));
-
-    beforeItems.forEach((item, i) => {
-      result.push(textNode(item, i === 0 ? 1 : 2, {
-        x: beforeX + CONTENT_PADDING_X,
-        y: y + ROW_PADDING_Y + i * (ITEM_HEIGHT + ITEM_GAP),
-        width: COLUMN_WIDTH - CONTENT_PADDING_X - CONTENT_RIGHT_PADDING,
-        height: ITEM_HEIGHT,
-        kind: "label",
-        align: "left",
-        bulletMarker: "• ",
-      }));
+  // A group's own text is its first bullet line (depth 1), its children the
+  // rest (depth 2).
+  const groupColumn = (items: OutlineNode[], columnX: number, rowTop: number) =>
+    lineStack(items, {
+      x: columnX + CONTENT_PADDING_X,
+      y: rowTop + ROW_PADDING_Y,
+      width: COLUMN_WIDTH - CONTENT_PADDING_X - CONTENT_RIGHT_PADDING,
+      lineHeight: ITEM_HEIGHT,
+      gap: ITEM_GAP,
+      depth: (i) => (i === 0 ? 1 : 2),
+      props: { kind: "label", align: "left", bulletMarker: "• " },
     });
 
-    afterItems.forEach((item, i) => {
-      result.push(textNode(item, i === 0 ? 1 : 2, {
-        x: afterX + CONTENT_PADDING_X,
-        y: y + ROW_PADDING_Y + i * (ITEM_HEIGHT + ITEM_GAP),
-        width: COLUMN_WIDTH - CONTENT_PADDING_X - CONTENT_RIGHT_PADDING,
-        height: ITEM_HEIGHT,
-        kind: "label",
-        align: "left",
-        bulletMarker: "• ",
-      }));
-    });
-
-    // The connector arrow, centered in the gap between the two columns and
-    // vertically centered on this row - a fixed neutral gray (`neutralFill`,
-    // see layoutNode.ts/style.ts), not this document's color theme, since
-    // it's structural, not branded content (same reasoning as timeline's
-    // track line).
-    result.push(decoration({
-      x: ROW_HEADER_WIDTH + COLUMN_WIDTH + (ARROW_COLUMN_WIDTH - ARROW_SIZE) / 2,
-      y: y + rowHeight / 2 - ARROW_SIZE / 2,
-      width: ARROW_SIZE,
-      height: ARROW_SIZE,
-      kind: "polygon",
-      points: RIGHT_TRIANGLE_POINTS,
-      neutralFill: true,
-    }));
-
-    y += rowHeight;
-
-    // A dashed rule between this row and the next - not above the first row
-    // or below the last (see the loop condition) - same reasoning as
-    // headingBullets' separator. Spans both content columns and the arrow
-    // gap between them (the row heading column is one continuous band of
-    // identical color across every row, so a seam there wouldn't show).
-    if (rowIndex < outline.length - 1) {
-      result.push(decoration({
-        x: ROW_HEADER_WIDTH,
-        y,
-        width: TOTAL_WIDTH - ROW_HEADER_WIDTH,
-        height: 0,
-        kind: "line",
-      }));
-    }
-  });
+  // Rows separated by a dashed rule spanning both content columns and the
+  // arrow gap between them.
+  result.push(
+    ...headingRows(outline, {
+      top: 0,
+      headingWidth: ROW_HEADER_WIDTH,
+      separatorWidth: TOTAL_WIDTH - ROW_HEADER_WIDTH,
+      minRowHeight: ROW_MIN_HEIGHT,
+      paddingY: ROW_PADDING_Y,
+      contentHeight: (row) =>
+        lineStackHeight(Math.max(groupItems(row.children[0]).length, groupItems(row.children[1]).length), ITEM_HEIGHT, ITEM_GAP),
+      content: (row, _i, rowTop, rowHeight) => [
+        ...groupColumn(groupItems(row.children[0]), beforeX, rowTop),
+        ...groupColumn(groupItems(row.children[1]), afterX, rowTop),
+        // The connector arrow, centered in the gap between the two columns
+        // and vertically centered on this row - a fixed neutral gray
+        // (`neutralFill`, see layoutNode.ts/style.ts), not this document's
+        // color theme, since it's structural, not branded content (same
+        // reasoning as timeline's track line).
+        decoration({
+          x: ROW_HEADER_WIDTH + COLUMN_WIDTH + (ARROW_COLUMN_WIDTH - ARROW_SIZE) / 2,
+          y: rowTop + rowHeight / 2 - ARROW_SIZE / 2,
+          width: ARROW_SIZE,
+          height: ARROW_SIZE,
+          kind: "polygon",
+          points: RIGHT_TRIANGLE_POINTS,
+          neutralFill: true,
+        }),
+      ],
+    }),
+  );
 
   return result;
 }

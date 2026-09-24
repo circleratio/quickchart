@@ -1,6 +1,10 @@
 import type { OutlineNode } from "../model/document";
 import { decoration, fixedText, shapeNode, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
+import { lineStack } from "./parts/lineStack";
+import { stepNumber } from "./parts/numbering";
+import { RIGHT_TRIANGLE_POINTS } from "./parts/polygon";
+import { ruledTitle } from "./parts/ruledTitle";
 
 const CARD_WIDTH = 220;
 const CARD_MIN_HEIGHT = 300;
@@ -32,20 +36,6 @@ const TITLE_HEIGHT = 30;
 const TITLE_GAP = 32;
 const TITLE_BAND_WIDTH = 340;
 const TITLE_FONT_SIZE = 22;
-const TITLE_LINE_GAP = 16;
-
-function stepNumber(index: number): string {
-  return String(index + 1).padStart(2, "0");
-}
-
-// Right-pointing triangle, as vertex fractions of its own bounding box (see
-// shape.ts's PolygonShape) - same idea as schedule.ts's downward milestone
-// triangle, just rotated 90°.
-const RIGHT_TRIANGLE_POINTS = [
-  { x: 0, y: 0 },
-  { x: 0, y: 1 },
-  { x: 1, y: 0.5 },
-];
 
 // "フロースケジュール（横）" (doc/spec.md §6.2.10): flowSchedule (§6.2.9)
 // turned sideways - a left-to-right row of rounded-corner step cards, each
@@ -69,39 +59,9 @@ export function layoutFlowScheduleHorizontal(outline: OutlineNode[], title: stri
     ...outline.map((step) => CARD_PADDING_Y * 2 + NUMBER_HEIGHT + GAP_NUMBER_LABEL + LABEL_HEIGHT + ICON_GAP + step.children.length * DESC_LINE_HEIGHT),
   );
 
-  let y = 0;
-  const trimmedTitle = title.trim();
-  if (trimmedTitle) {
-    const bandWidth = Math.min(TITLE_BAND_WIDTH, totalWidth || TITLE_BAND_WIDTH);
-    const bandX = (totalWidth - bandWidth) / 2;
-    result.push(fixedText(trimmedTitle, {
-      x: bandX,
-      y: 0,
-      width: bandWidth,
-      height: TITLE_HEIGHT,
-      kind: "label",
-      align: "center",
-      fontWeight: "bold",
-      fontSize: TITLE_FONT_SIZE,
-      // No textColorSlot override - see flowSchedule.ts's own title for why
-      // (reads the same primary color as everything else, not an accent).
-    }));
-
-    const lineY = TITLE_HEIGHT / 2;
-    const leftWidth = bandX - TITLE_LINE_GAP;
-    if (leftWidth > 0) {
-      result.push(decoration({ x: 0, y: lineY, width: leftWidth, height: 0, kind: "line" }));
-      result.push(decoration({
-        x: bandX + bandWidth + TITLE_LINE_GAP,
-        y: lineY,
-        width: totalWidth - (bandX + bandWidth + TITLE_LINE_GAP),
-        height: 0,
-        kind: "line",
-      }));
-    }
-
-    y = TITLE_HEIGHT + TITLE_GAP;
-  }
+  const titleNodes = ruledTitle(title, totalWidth, { bandWidth: TITLE_BAND_WIDTH, height: TITLE_HEIGHT, fontSize: TITLE_FONT_SIZE });
+  result.push(...titleNodes);
+  const y = titleNodes.length > 0 ? TITLE_HEIGHT + TITLE_GAP : 0;
 
   outline.forEach((step, i) => {
     const x = i * (CARD_WIDTH + CONNECTOR_WIDTH);
@@ -150,17 +110,16 @@ export function layoutFlowScheduleHorizontal(outline: OutlineNode[], title: stri
     }));
     cy += LABEL_HEIGHT + ICON_GAP;
 
-    step.children.forEach((desc, j) => {
-      result.push(textNode(desc, 1, {
+    result.push(
+      ...lineStack(step.children, {
         x: x + DESC_PADDING_X,
-        y: cy + j * DESC_LINE_HEIGHT,
+        y: cy,
         width: CARD_WIDTH - DESC_PADDING_X * 2,
-        height: DESC_LINE_HEIGHT,
-        kind: "label",
-        align: "left",
-        fontSize: DESC_FONT_SIZE,
-      }));
-    });
+        lineHeight: DESC_LINE_HEIGHT,
+        depth: 1,
+        props: { kind: "label", align: "left", fontSize: DESC_FONT_SIZE },
+      }),
+    );
 
     if (i < outline.length - 1) {
       const gapX = x + CARD_WIDTH;

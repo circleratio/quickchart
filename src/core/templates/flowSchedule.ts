@@ -1,16 +1,15 @@
 import type { OutlineNode } from "../model/document";
-import { decoration, fixedText, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
+import { headingRows } from "./parts/headingRows";
+import { lineStack, lineStackHeight } from "./parts/lineStack";
+import { stepNumber } from "./parts/numbering";
+import { ruledTitle } from "./parts/ruledTitle";
 
 const HEADING_WIDTH = 220;
 const CONTENT_WIDTH = 680;
 const TOTAL_WIDTH = HEADING_WIDTH + CONTENT_WIDTH;
 const ROW_MIN_HEIGHT = 72;
 const ROW_PADDING_Y = 20;
-// Trimmed off the bottom of each heading cell so adjacent rows' identically
-// colored heading blocks don't visually fuse into one band - same trick as
-// headingBullets' HEADING_GAP (see headingBullets.ts).
-const HEADING_GAP = 4;
 const HEADING_FONT_SIZE = 16;
 const CONTENT_PADDING_X = 28;
 const CONTENT_RIGHT_PADDING = 24;
@@ -20,9 +19,6 @@ const TITLE_HEIGHT = 30;
 const TITLE_GAP = 26;
 const TITLE_BAND_WIDTH = 340;
 const TITLE_FONT_SIZE = 22;
-// Horizontal breathing room between the title text band and the flanking
-// dashed rules on either side of it.
-const TITLE_LINE_GAP = 16;
 
 // The "01" etc. row number: rendered as a `bulletMarker` prefix on the row's
 // own heading shape (layoutNode.ts's LayoutNode.bulletMarker), not baked into
@@ -34,7 +30,7 @@ const TITLE_LINE_GAP = 16;
 // index changes (add/delete/reorder - all full-regenerate for this pattern,
 // see isFullyRelayoutedPattern in sync.ts).
 function rowNumberPrefix(index: number): string {
-  return `${String(index + 1).padStart(2, "0")} | `;
+  return `${stepNumber(index)} | `;
 }
 
 // "フロースケジュール（縦）" (doc/spec.md §6.2.9): a vertical numbered list of
@@ -50,94 +46,24 @@ function rowNumberPrefix(index: number): string {
 // headingBullets' bulleted items, since the reference image's description
 // column is plain running text).
 export function layoutFlowSchedule(outline: OutlineNode[], title: string): LayoutNode[] {
-  const result: LayoutNode[] = [];
-  let y = 0;
-
-  const trimmedTitle = title.trim();
-  if (trimmedTitle) {
-    const bandWidth = Math.min(TITLE_BAND_WIDTH, TOTAL_WIDTH);
-    const bandX = (TOTAL_WIDTH - bandWidth) / 2;
-    result.push(fixedText(trimmedTitle, {
-      x: bandX,
-      y: 0,
-      width: bandWidth,
-      height: TITLE_HEIGHT,
-      kind: "label",
-      align: "center",
-      fontWeight: "bold",
-      fontSize: TITLE_FONT_SIZE,
-      // No textColorSlot override: labelStyle's own default (theme.primary[0])
-      // already matches the reference image's title color, which reads as the
-      // SAME blue as every row heading below it - not a contrasting "accent"
-      // callout color. (An earlier version of this file used `"accent"`,
-      // which resolves to an orange in the default "Neutral Blue" theme -
-      // wrong on inspection, fixed here.)
-    }));
-
-    // Dashed rules filling the rest of the title row on either side of the
-    // text band, same "line" kind/default dash as the row separators below -
-    // only drawn if there's actually room for them (a very wide title band
-    // could otherwise produce a negative-width line).
-    const lineY = TITLE_HEIGHT / 2;
-    const leftWidth = bandX - TITLE_LINE_GAP;
-    if (leftWidth > 0) {
-      result.push(decoration({ x: 0, y: lineY, width: leftWidth, height: 0, kind: "line" }));
-      result.push(decoration({
-        x: bandX + bandWidth + TITLE_LINE_GAP,
-        y: lineY,
-        width: TOTAL_WIDTH - (bandX + bandWidth + TITLE_LINE_GAP),
-        height: 0,
-        kind: "line",
-      }));
-    }
-
-    y = TITLE_HEIGHT + TITLE_GAP;
-  }
-
-  outline.forEach((row, i) => {
-    const descCount = row.children.length;
-    const contentHeight = descCount * DESC_LINE_HEIGHT;
-    const rowHeight = Math.max(ROW_MIN_HEIGHT, contentHeight + ROW_PADDING_Y * 2);
-
-    result.push(textNode(row, 0, {
-      x: 0,
-      y,
-      width: HEADING_WIDTH,
-      height: rowHeight - HEADING_GAP,
-      kind: "heading",
-      fontSize: HEADING_FONT_SIZE,
-      bulletMarker: rowNumberPrefix(i),
-    }));
-
-    const descStartY = y + (rowHeight - contentHeight) / 2;
-    row.children.forEach((desc, j) => {
-      result.push(textNode(desc, 1, {
+  const titleNodes = ruledTitle(title, TOTAL_WIDTH, { bandWidth: TITLE_BAND_WIDTH, height: TITLE_HEIGHT, fontSize: TITLE_FONT_SIZE });
+  const rows = headingRows(outline, {
+    top: titleNodes.length > 0 ? TITLE_HEIGHT + TITLE_GAP : 0,
+    headingWidth: HEADING_WIDTH,
+    separatorWidth: CONTENT_WIDTH,
+    minRowHeight: ROW_MIN_HEIGHT,
+    paddingY: ROW_PADDING_Y,
+    heading: (_row, i) => ({ fontSize: HEADING_FONT_SIZE, bulletMarker: rowNumberPrefix(i) }),
+    contentHeight: (row) => lineStackHeight(row.children.length, DESC_LINE_HEIGHT),
+    content: (row, _i, rowTop, rowHeight) =>
+      lineStack(row.children, {
         x: HEADING_WIDTH + CONTENT_PADDING_X,
-        y: descStartY + j * DESC_LINE_HEIGHT,
+        y: rowTop + (rowHeight - lineStackHeight(row.children.length, DESC_LINE_HEIGHT)) / 2,
         width: CONTENT_WIDTH - CONTENT_PADDING_X - CONTENT_RIGHT_PADDING,
-        height: DESC_LINE_HEIGHT,
-        kind: "label",
-        align: "left",
-        fontSize: DESC_FONT_SIZE,
-      }));
-    });
-
-    y += rowHeight;
-
-    // Dashed separator between this row and the next (not above the first or
-    // below the last), spanning only the content column - same reasoning as
-    // headingBullets' separator (the heading column is one continuous band of
-    // identical color across every row, so a seam there wouldn't show).
-    if (i < outline.length - 1) {
-      result.push(decoration({
-        x: HEADING_WIDTH,
-        y,
-        width: CONTENT_WIDTH,
-        height: 0,
-        kind: "line",
-      }));
-    }
+        lineHeight: DESC_LINE_HEIGHT,
+        depth: 1,
+        props: { kind: "label", align: "left", fontSize: DESC_FONT_SIZE },
+      }),
   });
-
-  return result;
+  return [...titleNodes, ...rows];
 }

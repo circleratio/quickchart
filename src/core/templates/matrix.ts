@@ -3,6 +3,7 @@ import type { Point } from "../model/shape";
 import type { ThemeColorSlot } from "../model/style";
 import { decoration, fixedText, shapeNode, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
+import { polygonFromAbsolute } from "./parts/polygon";
 
 export const MATRIX_MAX_ROOTS = 4;
 
@@ -99,21 +100,7 @@ function doubleArrow(from: number, to: number, across: number, vertical: boolean
 }
 
 function polygonNode(abs: Point[]): LayoutNode {
-  const minX = Math.min(...abs.map((p) => p.x));
-  const maxX = Math.max(...abs.map((p) => p.x));
-  const minY = Math.min(...abs.map((p) => p.y));
-  const maxY = Math.max(...abs.map((p) => p.y));
-  const width = maxX - minX;
-  const height = maxY - minY;
-  return decoration({
-    x: minX,
-    y: minY,
-    width,
-    height,
-    kind: "polygon",
-    points: abs.map((p) => ({ x: (p.x - minX) / width, y: (p.y - minY) / height })),
-    fillColorSlot: 0,
-  });
+  return decoration({ ...polygonFromAbsolute(abs), fillColorSlot: 0 });
 }
 
 // "４象限マトリクス" (doc/spec.md §6.2.1): four outlined quadrants split by a cross

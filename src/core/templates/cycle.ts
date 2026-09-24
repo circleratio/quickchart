@@ -3,6 +3,7 @@ import type { Point } from "../model/shape";
 import type { ThemeColorSlot } from "../model/style";
 import { fixedText, shapeNode, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
+import { polygonFromAbsolute } from "./parts/polygon";
 
 // Ring geometry. The ring's center is (CENTER_X, CENTER_Y) in layout
 // coordinates; sync.ts's normalizeToOrigin shifts the whole block so its
@@ -62,24 +63,8 @@ function arc(from: number, to: number, radius: number): Point[] {
   return Array.from({ length: steps + 1 }, (_, k) => polar(from + ((to - from) * k) / steps, radius));
 }
 
-// Converts absolute points into a polygon LayoutNode (points as fractions of
-// its own bounding box, like every other PolygonShape).
 function polygonNode(node: OutlineNode, abs: Point[], fillColorSlot: ThemeColorSlot): LayoutNode {
-  const minX = Math.min(...abs.map((p) => p.x));
-  const maxX = Math.max(...abs.map((p) => p.x));
-  const minY = Math.min(...abs.map((p) => p.y));
-  const maxY = Math.max(...abs.map((p) => p.y));
-  const width = maxX - minX;
-  const height = maxY - minY;
-  return shapeNode(node, {
-    x: minX,
-    y: minY,
-    width,
-    height,
-    kind: "polygon",
-    points: abs.map((p) => ({ x: (p.x - minX) / width, y: (p.y - minY) / height })),
-    fillColorSlot,
-  });
+  return shapeNode(node, { ...polygonFromAbsolute(abs), fillColorSlot });
 }
 
 // An arrow's pointed head: its two flared base corners, its tip, and the

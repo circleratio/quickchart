@@ -2,6 +2,7 @@ import type { OutlineNode } from "../model/document";
 import type { ThemeColorSlot } from "../model/style";
 import { decoration, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
+import { lineStack } from "./parts/lineStack";
 
 const BADGE_WIDTH = 96;
 const BADGE_HEIGHT = 32;
@@ -76,18 +77,16 @@ export function layoutVerticalFlow(outline: OutlineNode[]): LayoutNode[] {
       fontWeight: "bold",
     }));
 
-    descNodes.forEach((desc, i) => {
-      result.push(textNode(desc, 2, {
+    result.push(
+      ...lineStack(descNodes, {
         x: CONTENT_X,
-        y: y + HEADER_HEIGHT + DESC_GAP_TOP + i * DESC_LINE_HEIGHT,
+        y: y + HEADER_HEIGHT + DESC_GAP_TOP,
         width: CONTENT_WIDTH,
-        height: DESC_LINE_HEIGHT,
-        kind: "label",
-        align: "left",
-        fontSize: DESC_FONT_SIZE,
-        textColorSlot: 2,
-      }));
-    });
+        lineHeight: DESC_LINE_HEIGHT,
+        depth: 2,
+        props: { kind: "label", align: "left", fontSize: DESC_FONT_SIZE, textColorSlot: 2 },
+      }),
+    );
 
     const contentHeight = HEADER_HEIGHT + (descNodes.length > 0 ? DESC_GAP_TOP + descNodes.length * DESC_LINE_HEIGHT : 0);
     y += contentHeight + STEP_GAP;
