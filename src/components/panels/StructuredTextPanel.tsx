@@ -5,9 +5,13 @@ import { useSelectionStore } from "../../core/store/selectionStore";
 import { useStructuredEditorStore } from "../../core/store/structuredEditorStore";
 import { parseOutline } from "../../core/templates/outlineParser";
 import { parseBulletMatrixMarkdown } from "../../core/templates/bulletMatrixParser";
+import { bulletMatrixColumnHeaders } from "../../core/templates/bulletMatrix";
 import { MATRIX_MAX_ROOTS, matrixParams } from "../../core/templates/matrix";
 import type { MatrixParams } from "../../core/templates/matrix";
 import { VENN_MAX_SETS, VENN_MIN_SETS } from "../../core/templates/venn";
+import { stringParam } from "../../core/templates/patternDefinition";
+import { pyramidChartColumnHeaders } from "../../core/templates/pyramidChart";
+import { scheduleParams } from "../../core/templates/schedule";
 import type { Milestone } from "../../core/templates/schedule";
 import type { OutlineNode, StructuredBlock } from "../../core/model/document";
 
@@ -45,28 +49,11 @@ const BULLET_MATRIX_IMPORT_PLACEHOLDER =
   "- **タイトル**\n" +
   "  - 詳細";
 
-function bulletMatrixColumnHeaders(params: Record<string, unknown>): string[] {
-  const raw = params.columnHeaders;
-  return Array.isArray(raw) ? raw.filter((h): h is string => typeof h === "string") : [];
-}
-
-// pyramidChart shares bulletMatrix's params.columnHeaders shape (doc/spec.md
-// §6.2.5) - kept as its own function since the two patterns are otherwise
-// unrelated in this file (separate PATTERN_LABEL entries, separate row
-// prefill rules, etc.).
-function pyramidChartColumnHeaders(params: Record<string, unknown>): string[] {
-  const raw = params.columnHeaders;
-  return Array.isArray(raw) ? raw.filter((h): h is string => typeof h === "string") : [];
-}
-
 // beforeAfterHorizontal's two column headers (doc/spec.md §6.2.13) - a fixed
 // pair rather than bulletMatrix's/pyramidChart's dynamic list, since this
 // pattern always has exactly a "before" and an "after" column.
 function beforeAfterHorizontalLabels(params: Record<string, unknown>): { beforeLabel: string; afterLabel: string } {
-  return {
-    beforeLabel: typeof params.beforeLabel === "string" ? params.beforeLabel : "",
-    afterLabel: typeof params.afterLabel === "string" ? params.afterLabel : "",
-  };
+  return { beforeLabel: stringParam(params, "beforeLabel"), afterLabel: stringParam(params, "afterLabel") };
 }
 
 // Matrix is fixed at 4 quadrants; Venn's root count follows params.setCount
@@ -88,18 +75,7 @@ export function StructuredTextPanel() {
   const document = useDocumentStore((s) => s.document);
   const addFirstOutlineNode = useDocumentStore((s) => s.addFirstOutlineNode);
   const replaceOutline = useDocumentStore((s) => s.replaceOutline);
-  const updateMatrixParams = useDocumentStore((s) => s.updateMatrixParams);
-  const updateVennSetCount = useDocumentStore((s) => s.updateVennSetCount);
-  const updateBulletMatrixColumns = useDocumentStore((s) => s.updateBulletMatrixColumns);
-  const replaceBulletMatrix = useDocumentStore((s) => s.replaceBulletMatrix);
-  const updatePyramidChartColumns = useDocumentStore((s) => s.updatePyramidChartColumns);
-  const updatePyramidChartTitle = useDocumentStore((s) => s.updatePyramidChartTitle);
-  const updateFlowScheduleTitle = useDocumentStore((s) => s.updateFlowScheduleTitle);
-  const updateFlowScheduleHorizontalTitle = useDocumentStore((s) => s.updateFlowScheduleHorizontalTitle);
-  const updateTimelineTitle = useDocumentStore((s) => s.updateTimelineTitle);
-  const updateCycleTitle = useDocumentStore((s) => s.updateCycleTitle);
-  const updateGridMatrixTitle = useDocumentStore((s) => s.updateGridMatrixTitle);
-  const updateBeforeAfterHorizontalLabels = useDocumentStore((s) => s.updateBeforeAfterHorizontalLabels);
+  const updateBlockParams = useDocumentStore((s) => s.updateBlockParams);
 
   const activeBlockId = useStructuredEditorStore((s) => s.activeBlockId);
   const setActiveBlockId = useStructuredEditorStore((s) => s.setActiveBlockId);
@@ -156,7 +132,7 @@ export function StructuredTextPanel() {
       {block.pattern === "venn" && (
         <VennSetCountControl
           value={typeof block.params.setCount === "number" ? block.params.setCount : VENN_MAX_SETS}
-          onChange={(n) => updateVennSetCount(block.id, n)}
+          onChange={(n) => updateBlockParams(block.id, { setCount: n })}
         />
       )}
 
@@ -164,7 +140,7 @@ export function StructuredTextPanel() {
         <BulletMatrixColumnInputs
           key={block.id}
           columnHeaders={bulletMatrixColumnHeaders(block.params)}
-          onCommit={(headers) => updateBulletMatrixColumns(block.id, headers)}
+          onCommit={(headers) => updateBlockParams(block.id, { columnHeaders: headers })}
         />
       )}
 
@@ -172,13 +148,13 @@ export function StructuredTextPanel() {
         <>
           <PyramidChartTitleInput
             key={`${block.id}-title`}
-            title={typeof block.params.title === "string" ? block.params.title : ""}
-            onCommit={(title) => updatePyramidChartTitle(block.id, title)}
+            title={stringParam(block.params, "title")}
+            onCommit={(title) => updateBlockParams(block.id, { title })}
           />
           <BulletMatrixColumnInputs
             key={`${block.id}-columns`}
             columnHeaders={pyramidChartColumnHeaders(block.params)}
-            onCommit={(headers) => updatePyramidChartColumns(block.id, headers)}
+            onCommit={(headers) => updateBlockParams(block.id, { columnHeaders: headers })}
           />
         </>
       )}
@@ -186,40 +162,40 @@ export function StructuredTextPanel() {
       {block.pattern === "flowSchedule" && (
         <PyramidChartTitleInput
           key={`${block.id}-title`}
-          title={typeof block.params.title === "string" ? block.params.title : ""}
-          onCommit={(title) => updateFlowScheduleTitle(block.id, title)}
+          title={stringParam(block.params, "title")}
+          onCommit={(title) => updateBlockParams(block.id, { title })}
         />
       )}
 
       {block.pattern === "flowScheduleHorizontal" && (
         <PyramidChartTitleInput
           key={`${block.id}-title`}
-          title={typeof block.params.title === "string" ? block.params.title : ""}
-          onCommit={(title) => updateFlowScheduleHorizontalTitle(block.id, title)}
+          title={stringParam(block.params, "title")}
+          onCommit={(title) => updateBlockParams(block.id, { title })}
         />
       )}
 
       {block.pattern === "timeline" && (
         <PyramidChartTitleInput
           key={`${block.id}-title`}
-          title={typeof block.params.title === "string" ? block.params.title : ""}
-          onCommit={(title) => updateTimelineTitle(block.id, title)}
+          title={stringParam(block.params, "title")}
+          onCommit={(title) => updateBlockParams(block.id, { title })}
         />
       )}
 
       {block.pattern === "gridMatrix" && (
         <PyramidChartTitleInput
           key={`${block.id}-title`}
-          title={typeof block.params.title === "string" ? block.params.title : ""}
-          onCommit={(title) => updateGridMatrixTitle(block.id, title)}
+          title={stringParam(block.params, "title")}
+          onCommit={(title) => updateBlockParams(block.id, { title })}
         />
       )}
 
       {(block.pattern === "cycle" || block.pattern === "cycleWithEntry") && (
         <PyramidChartTitleInput
           key={`${block.id}-title`}
-          title={typeof block.params.title === "string" ? block.params.title : ""}
-          onCommit={(title) => updateCycleTitle(block.id, title)}
+          title={stringParam(block.params, "title")}
+          onCommit={(title) => updateBlockParams(block.id, { title })}
         />
       )}
 
@@ -227,7 +203,7 @@ export function StructuredTextPanel() {
         <BeforeAfterHorizontalLabelInputs
           key={block.id}
           labels={beforeAfterHorizontalLabels(block.params)}
-          onCommit={(labels) => updateBeforeAfterHorizontalLabels(block.id, labels)}
+          onCommit={(labels) => updateBlockParams(block.id, labels)}
         />
       )}
 
@@ -257,7 +233,7 @@ export function StructuredTextPanel() {
       )}
 
       {block.pattern === "matrix" && (
-        <MatrixParamInputs key={block.id} params={matrixParams(block.params)} onCommit={(params) => updateMatrixParams(block.id, params)} />
+        <MatrixParamInputs key={block.id} params={matrixParams(block.params)} onCommit={(params) => updateBlockParams(block.id, { ...params })} />
       )}
 
       {block.pattern === "bulletMatrix" ? (
@@ -265,7 +241,7 @@ export function StructuredTextPanel() {
           placeholder={BULLET_MATRIX_IMPORT_PLACEHOLDER}
           onImport={(text) => {
             const parsed = parseBulletMatrixMarkdown(text);
-            replaceBulletMatrix(block.id, parsed.columnHeaders, parsed.outline);
+            replaceOutline(block.id, parsed.outline, { columnHeaders: parsed.columnHeaders });
           }}
         />
       ) : (
@@ -375,8 +351,8 @@ function PyramidChartTitleInput({ title, onCommit }: { title: string; onCommit: 
 // bulletMatrix's column headers (doc/spec.md §6.2.4) - a dynamic list rather
 // than MatrixParamInputs' fixed fields, since a bullet matrix can have any
 // number of columns. Adding/removing a column commits immediately (it
-// resizes every row's cells right away - see updateBulletMatrixColumns in
-// sync.ts); renaming one commits on blur, matching MatrixParamInputs.
+// resizes every row's cells right away - see bulletMatrix.ts's
+// onParamsChange); renaming one commits on blur, matching MatrixParamInputs.
 function BulletMatrixColumnInputs({
   columnHeaders,
   onCommit,
@@ -423,28 +399,6 @@ function BulletMatrixColumnInputs({
   );
 }
 
-function scheduleMonths(params: Record<string, unknown>): { startYear: number; startMonth: number; columnCount: number } {
-  const today = new Date();
-  return {
-    startYear: typeof params.startYear === "number" ? params.startYear : today.getFullYear(),
-    startMonth: typeof params.startMonth === "number" ? params.startMonth : today.getMonth() + 1, // Date's month is 0-indexed
-    columnCount: typeof params.columnCount === "number" ? params.columnCount : 6,
-  };
-}
-
-function scheduleMilestonesFrom(params: Record<string, unknown>): Milestone[] {
-  const raw = params.milestones;
-  return Array.isArray(raw)
-    ? raw.filter((m): m is Milestone => typeof m === "object" && m !== null && typeof m.date === "string" && typeof m.label === "string")
-    : [];
-}
-
-function scheduleConnectionsFrom(params: Record<string, unknown>): Record<string, string> {
-  const raw = params.connections;
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
-  return Object.fromEntries(Object.entries(raw as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === "string"));
-}
-
 // schedule's row/bar tree (doc/spec.md §6.2.6): a row is a plain label; each
 // of its bars needs a label plus a start/end date (bar.children[0]/[1], see
 // schedule.ts) and an optional "connects to" dependency link
@@ -458,11 +412,9 @@ function ScheduleEditor({ block }: { block: StructuredBlock }) {
   const deleteOutlineNode = useDocumentStore((s) => s.deleteOutlineNode);
   const moveOutlineNode = useDocumentStore((s) => s.moveOutlineNode);
   const updateOutlineNodeText = useDocumentStore((s) => s.updateOutlineNodeText);
-  const updateScheduleMonths = useDocumentStore((s) => s.updateScheduleMonths);
-  const updateScheduleMilestones = useDocumentStore((s) => s.updateScheduleMilestones);
-  const updateScheduleConnections = useDocumentStore((s) => s.updateScheduleConnections);
+  const updateBlockParams = useDocumentStore((s) => s.updateBlockParams);
 
-  const connections = scheduleConnectionsFrom(block.params);
+  const { startYear, startMonth, columnCount, milestones, connections } = scheduleParams(block.params);
   // Flat "row label > bar label" list of every bar in the document, for each
   // bar's own "接続先" (connects-to) picker below.
   const allBars = block.outline.flatMap((row) =>
@@ -471,11 +423,11 @@ function ScheduleEditor({ block }: { block: StructuredBlock }) {
 
   return (
     <>
-      <ScheduleMonthsInput key={`${block.id}-months`} months={scheduleMonths(block.params)} onCommit={(m) => updateScheduleMonths(block.id, m)} />
+      <ScheduleMonthsInput key={`${block.id}-months`} months={{ startYear, startMonth, columnCount }} onCommit={(m) => updateBlockParams(block.id, m)} />
       <ScheduleMilestonesInput
         key={`${block.id}-milestones`}
-        milestones={scheduleMilestonesFrom(block.params)}
-        onCommit={(m) => updateScheduleMilestones(block.id, m)}
+        milestones={milestones}
+        onCommit={(m) => updateBlockParams(block.id, { milestones: m })}
       />
 
       {block.outline.length === 0 ? (
@@ -514,7 +466,7 @@ function ScheduleEditor({ block }: { block: StructuredBlock }) {
                     blockId={block.id}
                     allBars={allBars}
                     connections={connections}
-                    onCommitConnections={(next) => updateScheduleConnections(block.id, next)}
+                    onCommitConnections={(next) => updateBlockParams(block.id, { connections: next })}
                     onDelete={() => deleteOutlineNode(block.id, bar.id)}
                   />
                 ))}

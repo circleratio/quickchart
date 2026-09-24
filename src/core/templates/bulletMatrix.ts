@@ -193,4 +193,19 @@ export const bulletMatrixPattern: PatternDefinition = {
   // render with a heading and zero cells, and the generic outline editor has
   // no way to know it should add exactly columnHeaders.length children.
   newRoot: (params) => emptyNode(emptyNodes(bulletMatrixColumnHeaders(params).length)),
+  // Changing the columns resizes every row's cells to match by position: a
+  // surviving column index keeps its existing cell (and everything under it),
+  // a new column index gets a fresh empty cell, and a dropped column's cell
+  // (and its subtree) is discarded.
+  onParamsChange: (outline, params, patch) => {
+    if (!("columnHeaders" in patch)) return { outline, params };
+    const columnCount = bulletMatrixColumnHeaders(params).length;
+    return {
+      params,
+      outline: outline.map((row) => ({
+        ...row,
+        children: Array.from({ length: columnCount }, (_, i) => row.children[i] ?? emptyNode()),
+      })),
+    };
+  },
 };

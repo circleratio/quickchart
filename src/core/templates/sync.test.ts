@@ -257,11 +257,11 @@ describe("matrix blocks (fully-relayouted pattern)", () => {
     expect(bullet.type === "text" && bullet.bulletMarker).toBe("□ ");
   });
 
-  it("updateMatrixParams draws the title and axis-end labels, and removes them when cleared", () => {
+  it("updateBlockParams draws a matrix's title and axis-end labels, and removes them when cleared", () => {
     const { document, blockId } = matrixBlock(createEmptyDocument());
     const texts = (doc: Document) => shapesOf(doc).flatMap((s) => (s.type === "text" && s.content ? [s.content] : []));
 
-    const labeled = sync.updateMatrixParams(document, blockId, {
+    const labeled = sync.updateBlockParams(document, blockId, {
       title: "人材活用のための分類",
       axisTop: "創造",
       axisBottom: "運用",
@@ -274,13 +274,13 @@ describe("matrix blocks (fully-relayouted pattern)", () => {
       expect(s.y).toBeGreaterThanOrEqual(0);
     }
 
-    const cleared = sync.updateMatrixParams(labeled, blockId, { title: "", axisTop: "", axisBottom: "", axisLeft: "", axisRight: "" });
+    const cleared = sync.updateBlockParams(labeled, blockId, { title: "", axisTop: "", axisBottom: "", axisLeft: "", axisRight: "" });
     expect(texts(cleared)).toEqual([]);
   });
 
   it("a text edit after setting labels keeps every shape in place", () => {
     let { document, blockId } = matrixBlock(createEmptyDocument());
-    document = sync.updateMatrixParams(document, blockId, { axisLeft: "個人", axisTop: "創造" });
+    document = sync.updateBlockParams(document, blockId, { axisLeft: "個人", axisTop: "創造" });
     const before = shapesOf(document).map((s) => ({ x: s.x, y: s.y }));
     document = sync.updateOutlineNodeText(document, blockId, nodeId(document, blockId, 0), "クリエイティブ人材");
     expect(shapesOf(document).map((s) => ({ x: s.x, y: s.y }))).toEqual(before);
@@ -294,7 +294,7 @@ describe("matrix blocks (fully-relayouted pattern)", () => {
       ...document,
       structuredBlocks: document.structuredBlocks.map((b) => ({ ...b, params: { axisXLabel: "市場シェア", axisYLabel: "市場成長性", _axisShapeIds: [] } })),
     };
-    document = sync.updateMatrixParams(document, blockId, { title: "PPM" });
+    document = sync.updateBlockParams(document, blockId, { title: "PPM" });
     const params = document.structuredBlocks[0].params;
     expect(params.axisRight).toBe("市場シェア");
     expect(params.axisTop).toBe("市場成長性");
@@ -337,15 +337,15 @@ describe("venn blocks (fully-relayouted, text-dependent pattern)", () => {
     expect(applesShape.templateNodeIds).toEqual([elementId]);
   });
 
-  it("updateVennSetCount shrinks the outline and regenerates shapes accordingly", () => {
+  it("updateBlockParams with a smaller setCount shrinks the outline and regenerates shapes accordingly", () => {
     let { document, blockId } = vennBlock(createEmptyDocument());
     const setAId = nodeId(document, blockId, 0);
     document = sync.addOutlineSibling(document, blockId, setAId);
-    document = sync.updateVennSetCount(document, blockId, 3);
+    document = sync.updateBlockParams(document, blockId, { setCount: 3 });
     document = sync.addOutlineSibling(document, blockId, document.structuredBlocks[0].outline[1].id);
     expect(document.structuredBlocks[0].outline).toHaveLength(3);
 
-    document = sync.updateVennSetCount(document, blockId, 2);
+    document = sync.updateBlockParams(document, blockId, { setCount: 2 });
     const block = document.structuredBlocks[0];
     expect(block.outline).toHaveLength(2);
     expect(block.params.setCount).toBe(2);
@@ -359,7 +359,7 @@ describe("venn blocks (fully-relayouted, text-dependent pattern)", () => {
   it("never places a generated shape at a negative coordinate (2 or 3 sets)", () => {
     for (const setCount of [2, 3] as const) {
       let { document, blockId } = vennBlock(createEmptyDocument());
-      if (setCount === 3) document = sync.updateVennSetCount(document, blockId, 3);
+      if (setCount === 3) document = sync.updateBlockParams(document, blockId, { setCount: 3 });
       const setAId = nodeId(document, blockId, 0);
       document = sync.addOutlineSibling(document, blockId, setAId);
       if (setCount === 3) document = sync.addOutlineSibling(document, blockId, document.structuredBlocks[0].outline[1].id);
@@ -439,7 +439,7 @@ describe("headingBullets blocks (fully-relayouted pattern)", () => {
 describe("bulletMatrix blocks (fully-relayouted pattern)", () => {
   function bulletMatrixBlock(doc: Document, columnHeaders: string[]) {
     const { document, blockId } = sync.addEmptyStructuredBlock(doc, "bulletMatrix");
-    const withColumns = sync.updateBulletMatrixColumns(document, blockId, columnHeaders);
+    const withColumns = sync.updateBlockParams(document, blockId, { columnHeaders });
     return { document: sync.addFirstOutlineNode(withColumns, blockId), blockId };
   }
 
@@ -472,7 +472,7 @@ describe("bulletMatrix blocks (fully-relayouted pattern)", () => {
     document = sync.addOutlineChild(document, blockId, cellId); // a title in column 0
     const titleId = document.structuredBlocks[0].outline[0].children[0].children[0].id;
 
-    document = sync.updateBulletMatrixColumns(document, blockId, ["企業", "産業"]);
+    document = sync.updateBlockParams(document, blockId, { columnHeaders: ["企業", "産業"] });
     const row = document.structuredBlocks[0].outline[0];
     expect(row.children).toHaveLength(2);
     expect(row.children[0].children[0].id).toBe(titleId); // column 0's content survived
@@ -486,12 +486,12 @@ describe("bulletMatrix blocks (fully-relayouted pattern)", () => {
     const titleId = document.structuredBlocks[0].outline[0].children[1].children[0].id;
     expect(Object.values(document.shapes).some((s) => s.templateNodeIds?.includes(titleId))).toBe(true);
 
-    document = sync.updateBulletMatrixColumns(document, blockId, ["企業"]);
+    document = sync.updateBlockParams(document, blockId, { columnHeaders: ["企業"] });
     expect(document.structuredBlocks[0].outline[0].children).toHaveLength(1);
     expect(Object.values(document.shapes).some((s) => s.templateNodeIds?.includes(titleId))).toBe(false);
   });
 
-  it("replaceBulletMatrix sets columns and outline together, generating correctly-styled row/column headers and title/detail shapes", () => {
+  it("replaceOutline with columnHeaders sets columns and outline together, generating correctly-styled row/column headers and title/detail shapes", () => {
     const cell: Document["structuredBlocks"][0]["outline"][0] = {
       id: "cell-a1",
       text: "",
@@ -500,7 +500,7 @@ describe("bulletMatrix blocks (fully-relayouted pattern)", () => {
     const outline = [{ id: "row-1", text: "行1", children: [cell] }];
 
     const { document: base, blockId } = sync.addEmptyStructuredBlock(createEmptyDocument(), "bulletMatrix");
-    const document = sync.replaceBulletMatrix(base, blockId, ["列1"], outline);
+    const document = sync.replaceOutline(base, blockId, outline, { columnHeaders: ["列1"] });
 
     const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
     const rowHeader = shapes.find((s) => s.templateNodeIds?.includes("row-1"))!;
@@ -535,7 +535,7 @@ describe("bulletMatrix blocks (fully-relayouted pattern)", () => {
 describe("pyramidChart blocks (fully-relayouted pattern)", () => {
   function pyramidChartBlock(doc: Document, columnHeaders: string[]) {
     const { document, blockId } = sync.addEmptyStructuredBlock(doc, "pyramidChart");
-    const withColumns = sync.updatePyramidChartColumns(document, blockId, columnHeaders);
+    const withColumns = sync.updateBlockParams(document, blockId, { columnHeaders });
     return { document: sync.addFirstOutlineNode(withColumns, blockId), blockId };
   }
 
@@ -616,7 +616,7 @@ describe("pyramidChart blocks (fully-relayouted pattern)", () => {
     const scaleId = document.structuredBlocks[0].outline[0].children[0].id;
     const cellId = document.structuredBlocks[0].outline[0].children[1].id;
 
-    document = sync.updatePyramidChartColumns(document, blockId, ["定義", "区分1"]);
+    document = sync.updateBlockParams(document, blockId, { columnHeaders: ["定義", "区分1"] });
     const row = document.structuredBlocks[0].outline[0];
     expect(row.children).toHaveLength(3);
     expect(row.children[0].id).toBe(scaleId); // scale slot survived
@@ -624,12 +624,20 @@ describe("pyramidChart blocks (fully-relayouted pattern)", () => {
     expect(row.children[2].text).toBe(""); // new column starts empty
   });
 
-  it("updatePyramidChartTitle regenerates a title label shape with the new text", () => {
+  it("updateBlockParams({ title }) on a pyramidChart regenerates a title label shape with the new text", () => {
     let { document, blockId } = pyramidChartBlock(createEmptyDocument(), ["定義"]);
-    document = sync.updatePyramidChartTitle(document, blockId, "市場規模ピラミッド");
+    document = sync.updateBlockParams(document, blockId, { title: "市場規模ピラミッド" });
     const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
     const title = shapes.find((s) => s.type === "text" && s.content === "市場規模ピラミッド");
     expect(title).toBeDefined();
+  });
+
+  it("updateBlockParams({ title }) leaves the outline as-is, even rows not matching the columns", () => {
+    let { document, blockId } = pyramidChartBlock(createEmptyDocument(), ["定義"]);
+    document = sync.replaceOutline(document, blockId, [{ id: "row", text: "層", children: [] }]);
+    document = sync.updateBlockParams(document, blockId, { title: "T" });
+    expect(document.structuredBlocks[0].outline).toEqual([{ id: "row", text: "層", children: [] }]);
+    expect(document.structuredBlocks[0].params).toMatchObject({ columnHeaders: ["定義"], title: "T" });
   });
 
   it("editing a cell's text patches its shape's content in place without moving any shape", () => {
@@ -660,9 +668,9 @@ describe("flowSchedule blocks (fully-relayouted pattern)", () => {
     expect(heading.type === "text" && heading.bulletMarker).toBe("01 | ");
   });
 
-  it("updateFlowScheduleTitle regenerates a title label shape with the new text", () => {
+  it("updateBlockParams({ title }) on a flowSchedule regenerates a title label shape with the new text", () => {
     const { document, blockId } = flowScheduleBlock(createEmptyDocument());
-    const next = sync.updateFlowScheduleTitle(document, blockId, "フロースケジュール（縦）");
+    const next = sync.updateBlockParams(document, blockId, { title: "フロースケジュール（縦）" });
     const shapes = next.structuredBlocks[0].generatedShapeIds.map((id) => next.shapes[id]);
     const title = shapes.find((s) => s.type === "text" && s.content === "フロースケジュール（縦）");
     expect(title).toBeDefined();
@@ -718,9 +726,9 @@ describe("flowScheduleHorizontal blocks (fully-relayouted pattern)", () => {
     expect(label).toBeDefined();
   });
 
-  it("updateFlowScheduleHorizontalTitle regenerates a title label shape with the new text", () => {
+  it("updateBlockParams({ title }) on a flowScheduleHorizontal regenerates a title label shape with the new text", () => {
     const { document, blockId } = flowScheduleHorizontalBlock(createEmptyDocument());
-    const next = sync.updateFlowScheduleHorizontalTitle(document, blockId, "フロースケジュール（横）");
+    const next = sync.updateBlockParams(document, blockId, { title: "フロースケジュール（横）" });
     const shapes = next.structuredBlocks[0].generatedShapeIds.map((id) => next.shapes[id]);
     const title = shapes.find((s) => s.type === "text" && s.content === "フロースケジュール（横）");
     expect(title).toBeDefined();
@@ -788,9 +796,9 @@ describe("timeline blocks (fully-relayouted pattern)", () => {
     expect(tracks).toHaveLength(1);
   });
 
-  it("updateTimelineTitle regenerates a title label shape with the new text", () => {
+  it("updateBlockParams({ title }) on a timeline regenerates a title label shape with the new text", () => {
     const { document, blockId } = timelineBlock(createEmptyDocument());
-    const next = sync.updateTimelineTitle(document, blockId, "1日のスケジュール");
+    const next = sync.updateBlockParams(document, blockId, { title: "1日のスケジュール" });
     const shapes = next.structuredBlocks[0].generatedShapeIds.map((id) => next.shapes[id]);
     const title = shapes.find((s) => s.type === "text" && s.content === "1日のスケジュール");
     expect(title).toBeDefined();
@@ -921,8 +929,8 @@ describe("gridMatrix blocks (fully-relayouted pattern)", () => {
     expect(rotated.rotation).toBe(-90);
     const before = tilesOf(document).map((s) => ({ x: s.x, y: s.y }));
 
-    document = sync.updateGridMatrixTitle(document, blockId, "");
-    document = sync.updateGridMatrixTitle(document, blockId, "");
+    document = sync.updateBlockParams(document, blockId, { title: "" });
+    document = sync.updateBlockParams(document, blockId, { title: "" });
 
     expect(tilesOf(document).map((s) => ({ x: s.x, y: s.y }))).toEqual(before);
   });
@@ -947,7 +955,7 @@ describe("cycle blocks (fully-relayouted pattern)", () => {
   it("shows the center title as an untracked label", () => {
     let { document, blockId } = sync.addEmptyStructuredBlock(createEmptyDocument(), "cycleWithEntry");
     document = sync.addFirstOutlineNode(document, blockId);
-    document = sync.updateCycleTitle(document, blockId, "格差の連鎖");
+    document = sync.updateBlockParams(document, blockId, { title: "格差の連鎖" });
     const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
     const title = shapes.find((s) => s.type === "text" && s.content === "格差の連鎖");
     expect(title?.templateNodeIds ?? []).toEqual([]);
@@ -1041,7 +1049,7 @@ describe("beforeAfterHorizontal blocks (fully-relayouted pattern)", () => {
 
   it("generates a heading shape for the row, plus the two column header shapes", () => {
     const { document, blockId } = beforeAfterHorizontalBlock(createEmptyDocument());
-    const next = sync.updateBeforeAfterHorizontalLabels(document, blockId, { beforeLabel: "考慮すべき機会", afterLabel: "展開戦略" });
+    const next = sync.updateBlockParams(document, blockId, { beforeLabel: "考慮すべき機会", afterLabel: "展開戦略" });
     const rowId = nodeId(next, blockId, 0);
     const shapes = next.structuredBlocks[0].generatedShapeIds.map((id) => next.shapes[id]);
     expect(shapes.some((s) => s.templateNodeIds?.includes(rowId))).toBe(true);
@@ -1086,9 +1094,9 @@ describe("beforeAfterHorizontal blocks (fully-relayouted pattern)", () => {
     expect(label?.type === "text" && label.content).toBe("冷凍食品は市場規模が今後も拡大");
   });
 
-  it("updateBeforeAfterHorizontalLabels regenerates both column header shapes with the new text", () => {
+  it("updateBlockParams({ beforeLabel, afterLabel }) regenerates both column header shapes with the new text", () => {
     const { document, blockId } = beforeAfterHorizontalBlock(createEmptyDocument());
-    const next = sync.updateBeforeAfterHorizontalLabels(document, blockId, { beforeLabel: "考慮すべき機会", afterLabel: "展開戦略" });
+    const next = sync.updateBlockParams(document, blockId, { beforeLabel: "考慮すべき機会", afterLabel: "展開戦略" });
     const shapes = next.structuredBlocks[0].generatedShapeIds.map((id) => next.shapes[id]);
     expect(shapes.some((s) => s.type === "text" && s.content === "考慮すべき機会")).toBe(true);
     expect(shapes.some((s) => s.type === "text" && s.content === "展開戦略")).toBe(true);
@@ -1187,23 +1195,23 @@ describe("schedule blocks (fully-relayouted pattern)", () => {
     expect(barShape!.type === "text" && barShape!.content).toBe("連携可能性の検討");
   });
 
-  it("updateScheduleMonths regenerates the year/month header text", () => {
+  it("updateBlockParams with a month range regenerates the year/month header text", () => {
     let { document, blockId } = scheduleBlock(createEmptyDocument());
-    document = sync.updateScheduleMonths(document, blockId, { startYear: 2020, startMonth: 4, columnCount: 3 });
+    document = sync.updateBlockParams(document, blockId, { startYear: 2020, startMonth: 4, columnCount: 3 });
     const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
     expect(shapes.some((s) => s.type === "text" && s.content === "2020年")).toBe(true);
     expect(shapes.some((s) => s.type === "text" && s.content === "4月")).toBe(true);
   });
 
-  it("updateScheduleMilestones adds a triangle marker shape", () => {
+  it("updateBlockParams({ milestones }) adds a triangle marker shape", () => {
     let { document, blockId } = scheduleBlock(createEmptyDocument());
-    document = sync.updateScheduleMilestones(document, blockId, [{ date: "2018-06-29", label: "中間報告書①" }]);
+    document = sync.updateBlockParams(document, blockId, { milestones: [{ date: "2018-06-29", label: "中間報告書①" }] });
     const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
     expect(shapes.some((s) => s.type === "polygon")).toBe(true);
     expect(shapes.some((s) => s.type === "text" && s.content === "中間報告書①(6/29)")).toBe(true);
   });
 
-  it("updateScheduleConnections draws a solid, marker-tipped arrow shape between two bars", () => {
+  it("updateBlockParams({ connections }) draws a solid, marker-tipped arrow shape between two bars", () => {
     let { document, blockId } = scheduleBlock(createEmptyDocument());
     const bar1 = document.structuredBlocks[0].outline[0].children[0];
     document = sync.updateOutlineNodeText(document, blockId, bar1.children[0].id, "2018-06-01");
@@ -1213,7 +1221,7 @@ describe("schedule blocks (fully-relayouted pattern)", () => {
     document = sync.updateOutlineNodeText(document, blockId, bar2.children[0].id, "2018-06-15");
     document = sync.updateOutlineNodeText(document, blockId, bar2.children[1].id, "2018-06-25");
 
-    document = sync.updateScheduleConnections(document, blockId, { [bar1.id]: bar2.id });
+    document = sync.updateBlockParams(document, blockId, { connections: { [bar1.id]: bar2.id } });
     const shapes = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]);
     const connector = shapes.find((s) => s.type === "arrow" && s.style.strokeDasharray === undefined);
     expect(connector).toBeDefined();

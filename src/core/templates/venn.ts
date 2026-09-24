@@ -195,4 +195,12 @@ export const vennPattern: PatternDefinition = {
   // An element's text decides which set-combination it belongs to, so a text
   // edit can move, split or merge its shape (doc/spec.md §6.2.2).
   regenerateOnTextEdit: "panelAndCanvas",
+  // Shrinking setCount drops any roots beyond the new count (and their
+  // shapes) - otherwise a set the UI no longer lets you edit would linger as
+  // an orphan.
+  onParamsChange: (outline, params, patch) => {
+    if (!("setCount" in patch)) return { outline, params };
+    const setCount = vennSetCount(params);
+    return { outline: outline.slice(0, setCount), params: { ...params, setCount } };
+  },
 };

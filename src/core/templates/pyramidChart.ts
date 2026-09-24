@@ -193,4 +193,17 @@ export const pyramidChartPattern: PatternDefinition = {
   // A row needs its "scale" child plus one empty cell per column up front,
   // for the same reason as bulletMatrix's rows.
   newRoot: (params) => emptyNode(emptyNodes(1 + pyramidChartColumnHeaders(params).length)),
+  // Same column resize as bulletMatrix's, except child[0] (the "scale"
+  // label) is reserved and always kept.
+  onParamsChange: (outline, params, patch) => {
+    if (!("columnHeaders" in patch)) return { outline, params };
+    const columnCount = pyramidChartColumnHeaders(params).length;
+    return {
+      params,
+      outline: outline.map((row) => ({
+        ...row,
+        children: [row.children[0] ?? emptyNode(), ...Array.from({ length: columnCount }, (_, i) => row.children[1 + i] ?? emptyNode())],
+      })),
+    };
+  },
 };

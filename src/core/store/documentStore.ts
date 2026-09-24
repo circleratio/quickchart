@@ -12,8 +12,6 @@ import { instantiateTemplate } from "../model/userTemplate";
 import { cloneShapesInto, detachExternalConnections } from "../model/shapeClone";
 import { DocumentHistory } from "./historyMiddleware";
 import * as sync from "../templates/sync";
-import type { MatrixParams } from "../templates/matrix";
-import type { Milestone } from "../templates/schedule";
 
 type ZOrderDirection = "front" | "back" | "forward" | "backward";
 
@@ -123,22 +121,12 @@ interface DocumentState {
   indentOutlineNode: (blockId: string, nodeId: string) => void;
   outdentOutlineNode: (blockId: string, nodeId: string) => void;
   moveOutlineNode: (blockId: string, nodeId: string, direction: "up" | "down") => void;
-  replaceOutline: (blockId: string, newOutline: StructuredBlock["outline"]) => void;
-  updateMatrixParams: (blockId: string, params: MatrixParams) => void;
-  updateVennSetCount: (blockId: string, setCount: number) => void;
-  updateBulletMatrixColumns: (blockId: string, columnHeaders: string[]) => void;
-  replaceBulletMatrix: (blockId: string, columnHeaders: string[], newOutline: StructuredBlock["outline"]) => void;
-  updatePyramidChartColumns: (blockId: string, columnHeaders: string[]) => void;
-  updatePyramidChartTitle: (blockId: string, title: string) => void;
-  updateScheduleMonths: (blockId: string, months: { startYear: number; startMonth: number; columnCount: number }) => void;
-  updateScheduleMilestones: (blockId: string, milestones: Milestone[]) => void;
-  updateScheduleConnections: (blockId: string, connections: Record<string, string>) => void;
-  updateFlowScheduleTitle: (blockId: string, title: string) => void;
-  updateFlowScheduleHorizontalTitle: (blockId: string, title: string) => void;
-  updateTimelineTitle: (blockId: string, title: string) => void;
-  updateCycleTitle: (blockId: string, title: string) => void;
-  updateGridMatrixTitle: (blockId: string, title: string) => void;
-  updateBeforeAfterHorizontalLabels: (blockId: string, labels: { beforeLabel: string; afterLabel: string }) => void;
+  // `paramsPatch`: params the imported text carries alongside the outline
+  // (see sync.ts's replaceOutline).
+  replaceOutline: (blockId: string, newOutline: StructuredBlock["outline"], paramsPatch?: Record<string, unknown>) => void;
+  // Any change to a block's params - title, column headers, axis labels,
+  // schedule settings, ... (see sync.ts's updateBlockParams).
+  updateBlockParams: (blockId: string, patch: Record<string, unknown>) => void;
 
   // User templates (doc/spec.md §6.4): placing one adds plain shapes (no
   // structured-template linkage) - registering one is pure read + an IPC
@@ -539,113 +527,15 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
       });
     },
 
-    replaceOutline: (blockId, newOutline) => {
-      const next = sync.replaceOutline(get().document, blockId, newOutline);
+    replaceOutline: (blockId, newOutline, paramsPatch) => {
+      const next = sync.replaceOutline(get().document, blockId, newOutline, paramsPatch);
       change((draft) => {
         Object.assign(draft, next);
       });
     },
 
-    updateMatrixParams: (blockId, params) => {
-      const next = sync.updateMatrixParams(get().document, blockId, params);
-      change((draft) => {
-        Object.assign(draft, next);
-      });
-    },
-
-    updateVennSetCount: (blockId, setCount) => {
-      const next = sync.updateVennSetCount(get().document, blockId, setCount);
-      change((draft) => {
-        Object.assign(draft, next);
-      });
-    },
-
-    updateBulletMatrixColumns: (blockId, columnHeaders) => {
-      const next = sync.updateBulletMatrixColumns(get().document, blockId, columnHeaders);
-      change((draft) => {
-        Object.assign(draft, next);
-      });
-    },
-
-    replaceBulletMatrix: (blockId, columnHeaders, newOutline) => {
-      const next = sync.replaceBulletMatrix(get().document, blockId, columnHeaders, newOutline);
-      change((draft) => {
-        Object.assign(draft, next);
-      });
-    },
-
-    updatePyramidChartColumns: (blockId, columnHeaders) => {
-      const next = sync.updatePyramidChartColumns(get().document, blockId, columnHeaders);
-      change((draft) => {
-        Object.assign(draft, next);
-      });
-    },
-
-    updatePyramidChartTitle: (blockId, title) => {
-      const next = sync.updatePyramidChartTitle(get().document, blockId, title);
-      change((draft) => {
-        Object.assign(draft, next);
-      });
-    },
-
-    updateFlowScheduleTitle: (blockId, title) => {
-      const next = sync.updateFlowScheduleTitle(get().document, blockId, title);
-      change((draft) => {
-        Object.assign(draft, next);
-      });
-    },
-
-    updateFlowScheduleHorizontalTitle: (blockId, title) => {
-      const next = sync.updateFlowScheduleHorizontalTitle(get().document, blockId, title);
-      change((draft) => {
-        Object.assign(draft, next);
-      });
-    },
-
-    updateTimelineTitle: (blockId, title) => {
-      const next = sync.updateTimelineTitle(get().document, blockId, title);
-      change((draft) => {
-        Object.assign(draft, next);
-      });
-    },
-
-    updateCycleTitle: (blockId, title) => {
-      const next = sync.updateCycleTitle(get().document, blockId, title);
-      change((draft) => {
-        Object.assign(draft, next);
-      });
-    },
-
-    updateGridMatrixTitle: (blockId, title) => {
-      const next = sync.updateGridMatrixTitle(get().document, blockId, title);
-      change((draft) => {
-        Object.assign(draft, next);
-      });
-    },
-
-    updateBeforeAfterHorizontalLabels: (blockId, labels) => {
-      const next = sync.updateBeforeAfterHorizontalLabels(get().document, blockId, labels);
-      change((draft) => {
-        Object.assign(draft, next);
-      });
-    },
-
-    updateScheduleMonths: (blockId, months) => {
-      const next = sync.updateScheduleMonths(get().document, blockId, months);
-      change((draft) => {
-        Object.assign(draft, next);
-      });
-    },
-
-    updateScheduleMilestones: (blockId, milestones) => {
-      const next = sync.updateScheduleMilestones(get().document, blockId, milestones);
-      change((draft) => {
-        Object.assign(draft, next);
-      });
-    },
-
-    updateScheduleConnections: (blockId, connections) => {
-      const next = sync.updateScheduleConnections(get().document, blockId, connections);
+    updateBlockParams: (blockId, patch) => {
+      const next = sync.updateBlockParams(get().document, blockId, patch);
       change((draft) => {
         Object.assign(draft, next);
       });

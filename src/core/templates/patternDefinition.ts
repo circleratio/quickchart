@@ -54,6 +54,13 @@ export interface PatternDefinition {
   // A new child of `parentNodeId`, prefilled the same way; undefined falls
   // back to an empty node.
   newChild?(outline: OutlineNode[], parentNodeId: string, params: RawParams): OutlineNode | undefined;
+
+  // Adjusts a params update (sync.ts's updateBlockParams) before the block
+  // is regenerated: normalizes the merged params and reshapes the outline to
+  // match them (e.g. one cell per column when the columns change). `patch`
+  // is what the caller changed, so a pattern can react only to the keys it
+  // cares about. Omitted: the merged params are stored as-is.
+  onParamsChange?(outline: OutlineNode[], params: RawParams, patch: RawParams): { outline: OutlineNode[]; params: RawParams };
 }
 
 export function emptyNode(children: OutlineNode[] = []): OutlineNode {

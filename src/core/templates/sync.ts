@@ -20,13 +20,9 @@ import {
 } from "../model/style";
 import type { ShapeStyle } from "../model/style";
 import type { LayoutNode } from "./layoutNode";
-import { matrixParams } from "./matrix";
-import type { MatrixParams } from "./matrix";
 import { emptyNode } from "./patternDefinition";
 import type { RawParams } from "./patternDefinition";
 import { patternOf } from "./registry";
-import type { Milestone } from "./schedule";
-import { VENN_MAX_SETS, VENN_MIN_SETS } from "./venn";
 
 // All functions here take a plain Document and return a new plain Document -
 // no Immer/store dependency, so they're directly unit-testable. documentStore
@@ -543,178 +539,23 @@ export function updateShapeContentAndSync(doc: Document, shapeId: ShapeId, conte
   return withBlock({ ...doc, shapes }, owningBlock.id, (b) => ({ ...b, outline }));
 }
 
-// The matrix's title and axis-end labels (doc/spec.md §6.2.1) live in params
-// and are laid out with the rest of the block, so a change just regenerates
-// it (same as updateFlowScheduleTitle). A pre-redesign block's axisXLabel/
-// axisYLabel are carried over into their new fields (matrixParams) and
-// dropped, along with its stale _axisShapeIds.
-export function updateMatrixParams(doc: Document, blockId: string, update: MatrixParams): Document {
+// Changes a block's params - a title, column headers, axis labels, a
+// schedule's month range/milestones/dependency links, ... (doc/spec.md §6.2):
+// everything a pattern keeps outside the outline because it has no natural
+// place in the node tree. `patch` is merged over the current params, the
+// pattern's PatternDefinition.onParamsChange gets a chance to normalize them
+// and reshape the outline to match (e.g. one cell per column), and the whole
+// (cheap, single-block) diagram is regenerated, since any of these can move
+// every other shape.
+export function updateBlockParams(doc: Document, blockId: string, patch: RawParams): Document {
   const block = findBlock(doc, blockId);
-  if (!block || block.pattern !== "matrix") return doc;
-  const { axisXLabel: _x, axisYLabel: _y, _axisShapeIds: _ids, ...rest } = block.params;
-  const updatedBlock: StructuredBlock = { ...block, params: { ...rest, ...matrixParams(block.params), ...update } };
-  return regenerateBlockShapes(doc, updatedBlock, block.outline);
-}
-
-// Shrinking setCount drops any roots beyond the new count (and their shapes) -
-// otherwise a set the UI no longer lets you edit would linger as an orphan.
-export function updateVennSetCount(doc: Document, blockId: string, setCount: number): Document {
-  const block = findBlock(doc, blockId);
-  if (!block || block.pattern !== "venn") return doc;
-  const clamped = Math.max(VENN_MIN_SETS, Math.min(VENN_MAX_SETS, setCount));
-  const newOutline = block.outline.slice(0, clamped);
-  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, setCount: clamped } };
-  return regenerateBlockShapes(doc, updatedBlock, newOutline);
-}
-
-// Changes bulletMatrix's column count/labels (doc/spec.md §6.2.4). Every
-// row's cells are resized to match by position: a surviving column index
-// keeps its existing cell (and everything under it - titles/details), a new
-// column index gets a fresh empty cell, and a dropped column's cell (and its
-// subtree) is discarded. Column headers have no outline node of their own
-// (bulletMatrixColumnHeaders in this file), so this is the only path that
-// changes them - unlike a row/cell/title/detail edit, which goes through the
-// normal outline operations below.
-export function updateBulletMatrixColumns(doc: Document, blockId: string, columnHeaders: string[]): Document {
-  const block = findBlock(doc, blockId);
-  if (!block || block.pattern !== "bulletMatrix") return doc;
-  const newOutline = block.outline.map((row) => ({
-    ...row,
-    children: columnHeaders.map((_, i) => row.children[i] ?? emptyNode()),
-  }));
-  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, columnHeaders } };
-  return regenerateBlockShapes(doc, updatedBlock, newOutline);
-}
-
-// Bulk replace from a parsed Markdown document (doc/spec.md §6.2.4): unlike
-// replaceOutline, bulletMatrix's column headers and outline must be set
-// together in one regeneration, since layoutBulletMatrix (bulletMatrix.ts)
-// needs both to position anything (see bulletMatrixColumnHeaders above).
-export function replaceBulletMatrix(doc: Document, blockId: string, columnHeaders: string[], newOutline: OutlineNode[]): Document {
-  const block = findBlock(doc, blockId);
-  if (!block || block.pattern !== "bulletMatrix") return doc;
-  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, columnHeaders } };
-  return regenerateBlockShapes(doc, updatedBlock, newOutline);
-}
-
-// Changes pyramidChart's column count/labels (doc/spec.md §6.2.5). Mirrors
-// updateBulletMatrixColumns above, except column 0 of each row's children is
-// reserved for the "scale" label (pyramidChart.ts) and always kept, with the
-// remaining children resized to match `columnHeaders` by position.
-export function updatePyramidChartColumns(doc: Document, blockId: string, columnHeaders: string[]): Document {
-  const block = findBlock(doc, blockId);
-  if (!block || block.pattern !== "pyramidChart") return doc;
-  const newOutline = block.outline.map((row) => ({
-    ...row,
-    children: [
-      row.children[0] ?? emptyNode(),
-      ...columnHeaders.map((_, i) => row.children[1 + i] ?? emptyNode()),
-    ],
-  }));
-  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, columnHeaders } };
-  return regenerateBlockShapes(doc, updatedBlock, newOutline);
-}
-
-// pyramidChart's overall title (doc/spec.md §6.2.5) isn't tied to an outline
-// node, same reasoning as matrix's axis labels/bulletMatrix's column headers.
-// A title change just regenerates the whole (cheap, single-block) diagram.
-export function updatePyramidChartTitle(doc: Document, blockId: string, title: string): Document {
-  const block = findBlock(doc, blockId);
-  if (!block || block.pattern !== "pyramidChart") return doc;
-  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, title } };
-  return regenerateBlockShapes(doc, updatedBlock, block.outline);
-}
-
-// flowSchedule's overall title (doc/spec.md §6.2.9) - same reasoning as
-// updatePyramidChartTitle above.
-export function updateFlowScheduleTitle(doc: Document, blockId: string, title: string): Document {
-  const block = findBlock(doc, blockId);
-  if (!block || block.pattern !== "flowSchedule") return doc;
-  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, title } };
-  return regenerateBlockShapes(doc, updatedBlock, block.outline);
-}
-
-// flowScheduleHorizontal's overall title (doc/spec.md §6.2.10) - same
-// reasoning as updateFlowScheduleTitle above.
-export function updateFlowScheduleHorizontalTitle(doc: Document, blockId: string, title: string): Document {
-  const block = findBlock(doc, blockId);
-  if (!block || block.pattern !== "flowScheduleHorizontal") return doc;
-  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, title } };
-  return regenerateBlockShapes(doc, updatedBlock, block.outline);
-}
-
-// timeline's overall title (doc/spec.md §6.2.11) - same reasoning as
-// updateFlowScheduleTitle above.
-export function updateTimelineTitle(doc: Document, blockId: string, title: string): Document {
-  const block = findBlock(doc, blockId);
-  if (!block || block.pattern !== "timeline") return doc;
-  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, title } };
-  return regenerateBlockShapes(doc, updatedBlock, block.outline);
-}
-
-// gridMatrix's title (doc/spec.md §6.2.16) - same reasoning as
-// updateFlowScheduleTitle above.
-export function updateGridMatrixTitle(doc: Document, blockId: string, title: string): Document {
-  const block = findBlock(doc, blockId);
-  if (!block || block.pattern !== "gridMatrix") return doc;
-  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, title } };
-  return regenerateBlockShapes(doc, updatedBlock, block.outline);
-}
-
-// cycle/cycleWithEntry's center title (doc/spec.md §6.2.15) - same
-// reasoning as updateFlowScheduleTitle above.
-export function updateCycleTitle(doc: Document, blockId: string, title: string): Document {
-  const block = findBlock(doc, blockId);
-  if (!block || (block.pattern !== "cycle" && block.pattern !== "cycleWithEntry")) return doc;
-  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, title } };
-  return regenerateBlockShapes(doc, updatedBlock, block.outline);
-}
-
-// beforeAfterHorizontal's two column headers (doc/spec.md §6.2.13) - same
-// reasoning as updatePyramidChartTitle above, just a pair of fields instead
-// of one.
-export function updateBeforeAfterHorizontalLabels(
-  doc: Document,
-  blockId: string,
-  labels: { beforeLabel: string; afterLabel: string },
-): Document {
-  const block = findBlock(doc, blockId);
-  if (!block || block.pattern !== "beforeAfterHorizontal") return doc;
-  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, ...labels } };
-  return regenerateBlockShapes(doc, updatedBlock, block.outline);
-}
-
-// schedule's month range (doc/spec.md §6.2.6) - like pyramidChart's title,
-// just regenerates the whole (cheap, single-block) chart rather than
-// incrementally patching header shapes, since every bar's x position also
-// depends on this range and would need recomputing anyway.
-export function updateScheduleMonths(
-  doc: Document,
-  blockId: string,
-  months: { startYear: number; startMonth: number; columnCount: number },
-): Document {
-  const block = findBlock(doc, blockId);
-  if (!block || block.pattern !== "schedule") return doc;
-  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, ...months } };
-  return regenerateBlockShapes(doc, updatedBlock, block.outline);
-}
-
-export function updateScheduleMilestones(doc: Document, blockId: string, milestones: Milestone[]): Document {
-  const block = findBlock(doc, blockId);
-  if (!block || block.pattern !== "schedule") return doc;
-  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, milestones } };
-  return regenerateBlockShapes(doc, updatedBlock, block.outline);
-}
-
-// Bar dependency links (doc/spec.md §6.2.6) - a flat barNodeId -> barNodeId
-// map, same reasoning as milestones/month range for living in params instead
-// of the outline (a dependency can point at a bar in any row, not just this
-// bar's own parent/sibling).
-export function updateScheduleConnections(doc: Document, blockId: string, connections: Record<string, string>): Document {
-  const block = findBlock(doc, blockId);
-  if (!block || block.pattern !== "schedule") return doc;
-  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, connections } };
-  return regenerateBlockShapes(doc, updatedBlock, block.outline);
+  if (!block) return doc;
+  const merged = { ...block.params, ...patch };
+  const { outline, params } = patternOf(block.pattern).onParamsChange?.(block.outline, merged, patch) ?? {
+    outline: block.outline,
+    params: merged,
+  };
+  return regenerateBlockShapes(doc, { ...block, params }, outline);
 }
 
 // params._axisShapeIds only exists on matrix blocks saved before the
@@ -840,16 +681,20 @@ export function moveOutlineNode(doc: Document, blockId: string, nodeId: string, 
 
 // Bulk replace (paste import, doc/spec.md §6.1): discards every shape this
 // block previously generated and lays out fresh ones for the new outline.
-export function replaceOutline(doc: Document, blockId: string, newOutline: OutlineNode[]): Document {
+// `paramsPatch` sets params that the imported text carries alongside the
+// outline (bulletMatrix's column headers, doc/spec.md §6.2.4), merged in the
+// same regeneration since the layout needs both. The outline is taken as
+// imported - onParamsChange isn't applied.
+export function replaceOutline(doc: Document, blockId: string, newOutline: OutlineNode[], paramsPatch: RawParams = {}): Document {
   const block = findBlock(doc, blockId);
   if (!block) return doc;
-  const next = regenerateBlockShapes(doc, block, newOutline);
+  const next = regenerateBlockShapes(doc, { ...block, params: { ...block.params, ...paramsPatch } }, newOutline);
   return regenerateTreeConnectors(next, blockId);
 }
 
 // Discards every shape `block` previously generated (by nodeId) and lays out
 // fresh ones for `newOutline`, using `block.params` for layout (so callers
-// that also change params, e.g. updateVennSetCount, should pass a `block`
+// that also change params, e.g. updateBlockParams, should pass a `block`
 // with those params already merged in). Shared by replaceOutline (bulk
 // import, any pattern) and every matrix/venn edit (doc/spec.md §6.2.1/§6.2.2 -
 // their shape positions depend on the whole outline, not just the edited

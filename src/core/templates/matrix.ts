@@ -261,4 +261,11 @@ export const matrixPattern: PatternDefinition = {
   // A matrix always has its 4 quadrants, so a fresh block starts with all of
   // them, empty, rather than growing one quadrant at a time.
   initialOutline: () => emptyNodes(MATRIX_MAX_ROOTS),
+  // A pre-redesign block's axisXLabel/axisYLabel are carried over into their
+  // new fields (matrixParams) and dropped, along with its stale
+  // _axisShapeIds (doc/spec.md §6.2.1).
+  onParamsChange: (outline, params) => {
+    const { axisXLabel: _x, axisYLabel: _y, _axisShapeIds: _ids, ...rest } = params;
+    return { outline, params: { ...rest, ...matrixParams(params) } };
+  },
 };
