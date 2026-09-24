@@ -3,6 +3,8 @@ import { decoration, fixedText, shapeNode, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
 import { lineStack } from "./parts/lineStack";
 import { DOWN_TRIANGLE_POINTS } from "./parts/polygon";
+import { emptyNode, emptyNodes } from "./patternDefinition";
+import type { PatternDefinition } from "./patternDefinition";
 
 const SIDEBAR_WIDTH = 140;
 const COLUMN_WIDTH = 340;
@@ -219,3 +221,12 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
 
   return result;
 }
+
+export const beforeAfterPattern: PatternDefinition = {
+  layout: (outline) => layoutBeforeAfter(outline),
+  // Each column's down-arrow is untracked with an index-derived x, and an
+  // indented topic would be stranded (see timeline).
+  restructure: "regenerate",
+  // A topic starts with both its ASIS and TOBE blocks (child[0]/child[1]).
+  newRoot: () => emptyNode(emptyNodes(2)),
+};

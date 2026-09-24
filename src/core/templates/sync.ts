@@ -19,223 +19,43 @@ import {
   treeConnectorStyle,
 } from "../model/style";
 import type { ShapeStyle } from "../model/style";
-import { layoutPyramid } from "./pyramid";
-import { layoutLogicTree } from "./logicTree";
-import { layoutMatrix, matrixParams, MATRIX_MAX_ROOTS } from "./matrix";
-import type { MatrixParams } from "./matrix";
-import { layoutVenn, VENN_MAX_SETS, VENN_MIN_SETS } from "./venn";
-import { layoutHeadingBullets } from "./headingBullets";
-import { layoutBulletMatrix } from "./bulletMatrix";
-import { layoutPyramidChart } from "./pyramidChart";
-import { layoutSchedule } from "./schedule";
-import type { Milestone, ScheduleParams } from "./schedule";
-import { layoutVerticalFlow } from "./verticalFlow";
-import { layoutHorizontalFlow } from "./horizontalFlow";
-import { layoutFlowSchedule } from "./flowSchedule";
-import { layoutFlowScheduleHorizontal } from "./flowScheduleHorizontal";
-import { layoutTimeline } from "./timeline";
-import { layoutBeforeAfter } from "./beforeAfter";
-import { layoutBeforeAfterHorizontal } from "./beforeAfterHorizontal";
-import { layoutChevronFlow } from "./chevronFlow";
-import { layoutCycle } from "./cycle";
-import { layoutGridMatrix } from "./gridMatrix";
 import type { LayoutNode } from "./layoutNode";
+import { matrixParams } from "./matrix";
+import type { MatrixParams } from "./matrix";
+import { emptyNode } from "./patternDefinition";
+import type { RawParams } from "./patternDefinition";
+import { patternOf } from "./registry";
+import type { Milestone } from "./schedule";
+import { VENN_MAX_SETS, VENN_MIN_SETS } from "./venn";
 
 // All functions here take a plain Document and return a new plain Document -
 // no Immer/store dependency, so they're directly unit-testable. documentStore
 // wires them into the Undo/Redo-tracked change() helper (see doc/spec.md §6.3).
+//
+// Pattern-specific behavior (layout, how each kind of edit re-places shapes,
+// prefilled nodes) comes from the pattern's PatternDefinition (registry.ts).
 
-// Patterns whose shape positions are fully determined by the current outline
-// as a whole (fixed quadrant slots / text-based set-membership grouping)
-// rather than by incremental placement relative to one reference shape.
-// Every outline edit regenerates all of their shapes from scratch instead of
-// the pyramid/logicTree incremental add/delete path (see regenerateBlockShapes
-// below and doc/spec.md §6.2.1/§6.2.2).
+// Patterns whose shape positions are determined by the outline as a whole
+// regenerate all of their shapes on every add/delete; only the tree patterns
+// place one node's shape incrementally (see PatternDefinition.tree).
 function isFullyRelayoutedPattern(pattern: StructuredBlock["pattern"]): boolean {
-  return (
-    pattern === "matrix" ||
-    pattern === "venn" ||
-    pattern === "headingBullets" ||
-    pattern === "bulletMatrix" ||
-    pattern === "pyramidChart" ||
-    pattern === "schedule" ||
-    pattern === "verticalFlow" ||
-    pattern === "horizontalFlow" ||
-    pattern === "flowSchedule" ||
-    pattern === "flowScheduleHorizontal" ||
-    pattern === "timeline" ||
-    pattern === "beforeAfter" ||
-    pattern === "beforeAfterHorizontal" ||
-    pattern === "chevronFlow" ||
-    pattern === "cycle" ||
-    pattern === "cycleWithEntry" ||
-    pattern === "gridMatrix"
-  );
+  return patternOf(pattern).tree === undefined;
 }
 
-function vennSetCount(params: Record<string, unknown>): number {
-  const raw = params.setCount;
-  const n = typeof raw === "number" ? raw : VENN_MAX_SETS;
-  return Math.max(VENN_MIN_SETS, Math.min(VENN_MAX_SETS, n));
-}
-
-// bulletMatrix's column headers live in params, not the outline text itself
-// (doc/spec.md §6.2.4, same reasoning as matrix.ts's axis labels).
-function bulletMatrixColumnHeaders(params: Record<string, unknown>): string[] {
-  const raw = params.columnHeaders;
-  return Array.isArray(raw) ? raw.filter((h): h is string => typeof h === "string") : [];
-}
-
-// pyramidChart's table column headers (doc/spec.md §6.2.5) - same shape and
-// reasoning as bulletMatrix's above, just a separate function since the two
-// patterns' params are otherwise unrelated.
-function pyramidChartColumnHeaders(params: Record<string, unknown>): string[] {
-  const raw = params.columnHeaders;
-  return Array.isArray(raw) ? raw.filter((h): h is string => typeof h === "string") : [];
-}
-
-function pyramidChartTitle(params: Record<string, unknown>): string {
-  return typeof params.title === "string" ? params.title : "";
-}
-
-// flowSchedule's overall title (doc/spec.md §6.2.9) - same params.title shape
-// and reasoning as pyramidChart's above (kept separate since the two
-// patterns are otherwise unrelated in this file).
-function flowScheduleTitle(params: Record<string, unknown>): string {
-  return typeof params.title === "string" ? params.title : "";
-}
-
-// flowScheduleHorizontal shares flowSchedule's exact params.title shape
-// (doc/spec.md §6.2.10).
-function flowScheduleHorizontalTitle(params: Record<string, unknown>): string {
-  return typeof params.title === "string" ? params.title : "";
-}
-
-// timeline shares the same params.title shape (doc/spec.md §6.2.11).
-function timelineTitle(params: Record<string, unknown>): string {
-  return typeof params.title === "string" ? params.title : "";
-}
-
-// cycle/cycleWithEntry's center title (doc/spec.md §6.2.15) - same
-// params.title shape.
-function cycleTitle(params: Record<string, unknown>): string {
-  return typeof params.title === "string" ? params.title : "";
-}
-
-// gridMatrix's title (doc/spec.md §6.2.16) - same params.title shape.
-function gridMatrixTitle(params: Record<string, unknown>): string {
-  return typeof params.title === "string" ? params.title : "";
-}
-
-// beforeAfterHorizontal's two column headers (doc/spec.md §6.2.13) - a fixed
-// pair like matrix's axis-end labels (MatrixParams), not a dynamic
-// list like bulletMatrix's columnHeaders, since this pattern always has
-// exactly 2 content columns.
-function beforeAfterHorizontalLabels(params: Record<string, unknown>): { beforeLabel: string; afterLabel: string } {
-  return {
-    beforeLabel: typeof params.beforeLabel === "string" ? params.beforeLabel : "",
-    afterLabel: typeof params.afterLabel === "string" ? params.afterLabel : "",
-  };
-}
-
-const SCHEDULE_DEFAULT_TODAY = new Date();
-const SCHEDULE_DEFAULT_YEAR = SCHEDULE_DEFAULT_TODAY.getFullYear();
-const SCHEDULE_DEFAULT_START_MONTH = SCHEDULE_DEFAULT_TODAY.getMonth() + 1; // Date's month is 0-indexed
-const SCHEDULE_DEFAULT_COLUMN_COUNT = 6;
-
-// schedule's month range/milestones/dependency links all live in params, not
-// the outline (doc/spec.md §6.2.6) - same reasoning as bulletMatrix's column
-// headers (none of them have a natural position in the row/bar tree).
-// Defaults start from this month so a freshly added block renders something
-// immediately relevant before the user sets real values.
-function scheduleParams(params: Record<string, unknown>): ScheduleParams {
-  const startYear = typeof params.startYear === "number" ? params.startYear : SCHEDULE_DEFAULT_YEAR;
-  const rawStartMonth = typeof params.startMonth === "number" ? params.startMonth : SCHEDULE_DEFAULT_START_MONTH;
-  const startMonth = Math.min(12, Math.max(1, rawStartMonth));
-  const rawColumnCount = typeof params.columnCount === "number" ? params.columnCount : SCHEDULE_DEFAULT_COLUMN_COUNT;
-  const columnCount = Math.max(1, Math.round(rawColumnCount));
-  const milestones = Array.isArray(params.milestones)
-    ? params.milestones.filter((m): m is Milestone => typeof m === "object" && m !== null && typeof m.date === "string" && typeof m.label === "string")
-    : [];
-  const connections =
-    typeof params.connections === "object" && params.connections !== null && !Array.isArray(params.connections)
-      ? Object.fromEntries(
-          Object.entries(params.connections as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
-        )
-      : {};
-  return { startYear, startMonth, columnCount, milestones, connections };
-}
-
-function layoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[], params: Record<string, unknown> = {}): LayoutNode[] {
-  const nodes = rawLayoutFor(pattern, outline, params);
-  // venn.ts's circle-centered layout, bulletMatrix's column headers (placed
-  // above row 0), and matrix.ts's axis cross/labels/title (laid out around
-  // the grid's own top-left) can all produce negative coordinates (see
-  // normalizeToOrigin below); pyramid/logicTree's cursor-based placement
-  // already starts at (0, 0), so normalizing them here would be a no-op at
-  // best.
-  return pattern === "venn" || pattern === "matrix" || pattern === "bulletMatrix" || pattern === "pyramidChart" || pattern === "schedule" ||
-    pattern === "beforeAfterHorizontal" ||
-    pattern === "cycle" ||
-    pattern === "cycleWithEntry"
-    ? normalizeToOrigin(nodes)
-    : nodes;
-}
-
-function rawLayoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[], params: Record<string, unknown>): LayoutNode[] {
-  switch (pattern) {
-    case "pyramid":
-      return layoutPyramid(outline);
-    case "logicTree":
-      return layoutLogicTree(outline);
-    case "matrix":
-      return layoutMatrix(outline, params as MatrixParams);
-    case "venn":
-      return layoutVenn(outline, vennSetCount(params));
-    case "headingBullets":
-      return layoutHeadingBullets(outline);
-    case "bulletMatrix":
-      return layoutBulletMatrix(outline, bulletMatrixColumnHeaders(params));
-    case "pyramidChart":
-      return layoutPyramidChart(outline, pyramidChartColumnHeaders(params), pyramidChartTitle(params));
-    case "schedule":
-      return layoutSchedule(outline, scheduleParams(params));
-    case "verticalFlow":
-      return layoutVerticalFlow(outline);
-    case "horizontalFlow":
-      return layoutHorizontalFlow(outline);
-    case "flowSchedule":
-      return layoutFlowSchedule(outline, flowScheduleTitle(params));
-    case "flowScheduleHorizontal":
-      return layoutFlowScheduleHorizontal(outline, flowScheduleHorizontalTitle(params));
-    case "timeline":
-      return layoutTimeline(outline, timelineTitle(params));
-    case "beforeAfter":
-      return layoutBeforeAfter(outline);
-    case "beforeAfterHorizontal": {
-      const { beforeLabel, afterLabel } = beforeAfterHorizontalLabels(params);
-      return layoutBeforeAfterHorizontal(outline, beforeLabel, afterLabel);
-    }
-    case "chevronFlow":
-      return layoutChevronFlow(outline);
-    case "cycle":
-      return layoutCycle(outline, cycleTitle(params), false);
-    case "cycleWithEntry":
-      return layoutCycle(outline, cycleTitle(params), true);
-    case "gridMatrix":
-      return layoutGridMatrix(outline, gridMatrixTitle(params));
-    default:
-      return [];
-  }
+function layoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[], params: RawParams = {}): LayoutNode[] {
+  const definition = patternOf(pattern);
+  const nodes = definition.layout(outline, params);
+  return definition.normalizeOrigin ? normalizeToOrigin(nodes) : nodes;
 }
 
 // Every caller treats a LayoutNode's (x, y) as an offset added to the block's
 // placement origin (originOfBlock below), which assumes the layout's own
-// minimum x/y is 0 - true for pyramid/logicTree/matrix's cursor-based
-// placement, but not for venn.ts, whose circle layout is centered on (0, 0)
-// and so spans negative coordinates. Shifting every node so the layout's own
-// bounding box starts at (0, 0) keeps that assumption true for any pattern,
-// instead of each pattern having to know about it.
+// minimum x/y is 0 - true for cursor-based placement starting at (0, 0), but
+// not for e.g. venn.ts, whose circle layout is centered on (0, 0) and so
+// spans negative coordinates. Shifting every node so the layout's own
+// bounding box starts at (0, 0) (for patterns that set
+// PatternDefinition.normalizeOrigin) keeps that assumption true without each
+// such layout having to compensate itself.
 function normalizeToOrigin(nodes: LayoutNode[]): LayoutNode[] {
   if (nodes.length === 0) return nodes;
   const minX = Math.min(...nodes.map((n) => n.x));
@@ -351,15 +171,10 @@ function findShapeForNode(doc: Document, block: StructuredBlock, nodeId: string)
   return undefined;
 }
 
-// Which of the two tree patterns (doc/spec.md §6.2) draws parent-child
-// connector lines, and along which axis: "down" for pyramid/ツリー図 (roots on
-// top, children below), "right" for logicTree/ロジックツリー (roots on the
-// left, children extending rightward) - matches treeLayout.ts's own
-// `direction`. Anything else (the fixed-hierarchy patterns) doesn't.
+// The tree patterns' connector direction (PatternDefinition.tree); undefined
+// for every other pattern, which draws no parent-child connector lines.
 function treeConnectorDirection(pattern: StructuredBlock["pattern"]): "down" | "right" | undefined {
-  if (pattern === "pyramid") return "down";
-  if (pattern === "logicTree") return "right";
-  return undefined;
+  return patternOf(pattern).tree?.direction;
 }
 
 function toLineShapes(segments: Array<[number, number, number, number]>, zIndexStart: number): LineShape[] {
@@ -521,7 +336,7 @@ const TREE_NODE_GAP = 36;
 // another pair" (the reported bug) looks like. Direction depends on the
 // pattern's layout axis (doc/spec.md §6.3).
 function newNodeOffset(pattern: StructuredBlock["pattern"], relation: "child" | "sibling", referenceShape: Shape | undefined): { x: number; y: number } {
-  const down = pattern !== "logicTree";
+  const down = treeConnectorDirection(pattern) !== "right";
   const refWidth = referenceShape?.width ?? DEFAULT_NODE_WIDTH;
   const refHeight = referenceShape?.height ?? DEFAULT_NODE_HEIGHT;
   if (relation === "child") return down ? { x: 0, y: refHeight + TREE_NODE_GAP } : { x: refWidth + TREE_NODE_GAP, y: 0 };
@@ -571,169 +386,19 @@ export function addEmptyStructuredBlock(doc: Document, pattern: StructuredBlock[
   return { document: { ...doc, structuredBlocks: [...doc.structuredBlocks, block] }, blockId: block.id };
 }
 
-// A bulletMatrix row (root outline node) needs one empty cell per
-// params.columnHeaders up front - otherwise a freshly-added row would render
-// with a heading and zero cells, and the generic outline editor has no way to
-// know it should add exactly columnHeaders.length children to fill them in.
-// Only used for a ROOT-level add (see addFirstOutlineNode/addOutlineSibling
-// below); a cell/title/detail added via addOutlineChild needs no such
-// prefill, since those levels don't have a fixed expected child count.
-function emptyBulletMatrixRow(block: StructuredBlock): OutlineNode {
-  return {
-    id: uuidv4(),
-    text: "",
-    children: bulletMatrixColumnHeaders(block.params).map(() => ({ id: uuidv4(), text: "", children: [] })),
-  };
-}
-
-// A pyramidChart row (root outline node) needs one "scale" child plus one
-// empty cell per params.columnHeaders up front, for the same reason
-// emptyBulletMatrixRow above does - see pyramidChart.ts for the fixed
-// child[0]=scale, child[1..]=columnHeaders position mapping.
-function emptyPyramidChartRow(block: StructuredBlock): OutlineNode {
-  return {
-    id: uuidv4(),
-    text: "",
-    children: [
-      { id: uuidv4(), text: "", children: [] },
-      ...pyramidChartColumnHeaders(block.params).map(() => ({ id: uuidv4(), text: "", children: [] })),
-    ],
-  };
-}
-
-// A verticalFlow step (root outline node) needs its badge child (child[0],
-// see verticalFlow.ts) up front for the same reason emptyPyramidChartRow
-// above does - without it, a freshly-added step would have no badge-shaped
-// slot for the generic outline editor to fill in (its "+子" just appends a
-// plain node, which would land at position 0 and be misread as the badge
-// only by accident of ordering). Unlike pyramidChart's cells, description
-// lines (child[1..]) have no fixed count, so only the badge is prefilled.
-function emptyVerticalFlowStep(): OutlineNode {
-  return { id: uuidv4(), text: "", children: [{ id: uuidv4(), text: "", children: [] }] };
-}
-
-// A timeline event (root outline node) needs its time child (child[0], see
-// timeline.ts) up front for the same reason emptyVerticalFlowStep above does.
-function emptyTimelineEvent(): OutlineNode {
-  return { id: uuidv4(), text: "", children: [{ id: uuidv4(), text: "", children: [] }] };
-}
-
-// A chevronFlow step (root outline node) needs its duration child (child[0],
-// see chevronFlow.ts) up front for the same reason emptyVerticalFlowStep
-// above does; its bullets (child[1..]) have no fixed count.
-function emptyChevronFlowStep(): OutlineNode {
-  return { id: uuidv4(), text: "", children: [{ id: uuidv4(), text: "", children: [] }] };
-}
-
-// gridMatrix's two fixed axes (root[0] = horizontal, root[1] = vertical, see
-// gridMatrix.ts), each prefilled with 3 empty labels so a fresh block starts
-// as a 3x3 grid; labels can then be added/removed per axis.
-const GRID_MATRIX_DEFAULT_SIZE = 3;
-function emptyGridMatrixAxes(): OutlineNode[] {
-  const axis = (): OutlineNode => ({
-    id: uuidv4(),
-    text: "",
-    children: Array.from({ length: GRID_MATRIX_DEFAULT_SIZE }, () => ({ id: uuidv4(), text: "", children: [] })),
-  });
-  return [axis(), axis()];
-}
-
-// A beforeAfter topic (root outline node) needs both its ASIS and TOBE
-// blocks (child[0]/child[1], see beforeAfter.ts) up front for the same
-// reason emptyPyramidChartRow above does - without them, a freshly-added
-// topic would have no ASIS/TOBE-shaped slots for the generic outline editor
-// to fill in. The topic's own text (unlike bulletMatrix's/pyramidChart's
-// root text) IS used directly - it's the badge (beforeAfter.ts) - so, unlike
-// those two, no further per-child prefill is needed here.
-function emptyBeforeAfterTopic(): OutlineNode {
-  return {
-    id: uuidv4(),
-    text: "",
-    children: [
-      { id: uuidv4(), text: "", children: [] },
-      { id: uuidv4(), text: "", children: [] },
-    ],
-  };
-}
-
-// A beforeAfterHorizontal row (root outline node) needs both its "before"
-// and "after" groups (child[0]/child[1], see beforeAfterHorizontal.ts) up
-// front, for the same reason emptyBeforeAfterTopic above does - always
-// exactly 2, unlike emptyBulletMatrixRow's variable columnHeaders-driven
-// count.
-function emptyBeforeAfterHorizontalRow(): OutlineNode {
-  return {
-    id: uuidv4(),
-    text: "",
-    children: [
-      { id: uuidv4(), text: "", children: [] },
-      { id: uuidv4(), text: "", children: [] },
-    ],
-  };
-}
-
-// A schedule bar's 2 children are position-based like pyramidChart's
-// scale/cells (doc/spec.md §6.2.6): child[0]=start date, child[1]=end date,
-// both "YYYY-MM-DD" strings entered via dedicated date inputs rather than
-// free text (see schedule.ts's dateToGridX).
-function emptyScheduleBar(): OutlineNode {
-  return {
-    id: uuidv4(),
-    text: "",
-    children: [
-      { id: uuidv4(), text: "", children: [] },
-      { id: uuidv4(), text: "", children: [] },
-    ],
-  };
-}
-
-// A schedule row needs one bar up front for the same reason
-// emptyBulletMatrixRow/emptyPyramidChartRow above do - an empty row with zero
-// bars would give the structured outline editor nothing bar-shaped to expand
-// into (a "+子" on the row would add a plain 0-child node, not a proper bar).
-function emptyScheduleRow(): OutlineNode {
-  return { id: uuidv4(), text: "", children: [emptyScheduleBar()] };
-}
-
 function newRootNode(block: StructuredBlock): OutlineNode {
-  if (block.pattern === "bulletMatrix") return emptyBulletMatrixRow(block);
-  if (block.pattern === "pyramidChart") return emptyPyramidChartRow(block);
-  if (block.pattern === "schedule") return emptyScheduleRow();
-  if (block.pattern === "verticalFlow") return emptyVerticalFlowStep();
-  if (block.pattern === "timeline") return emptyTimelineEvent();
-  if (block.pattern === "beforeAfter") return emptyBeforeAfterTopic();
-  if (block.pattern === "beforeAfterHorizontal") return emptyBeforeAfterHorizontalRow();
-  if (block.pattern === "chevronFlow") return emptyChevronFlowStep();
-  return { id: uuidv4(), text: "", children: [] };
+  return patternOf(block.pattern).newRoot?.(block.params) ?? emptyNode();
 }
 
-// addOutlineChild's own new node, prefilled the same way as newRootNode above
-// when the parent is a schedule ROW (adding a new bar to it) - unlike
-// newRootNode, only schedule needs this: bulletMatrix/pyramidChart's own
-// depth-1 prefill only ever happens as part of adding a whole new row
-// (their cell/scale counts are fixed by params, not grown one at a time).
 function newChildNode(block: StructuredBlock, parentNodeId: string): OutlineNode {
-  if (block.pattern === "schedule" && block.outline.some((n) => n.id === parentNodeId)) {
-    return emptyScheduleBar();
-  }
-  return { id: uuidv4(), text: "", children: [] };
+  return patternOf(block.pattern).newChild?.(block.outline, parentNodeId, block.params) ?? emptyNode();
 }
 
 export function addFirstOutlineNode(doc: Document, blockId: string): Document {
   const block = findBlock(doc, blockId);
   if (!block || block.outline.length > 0) return doc;
-  // gridMatrix's outline is always exactly its two axes (gridMatrix.ts), so
-  // both come in at once rather than one root at a time.
-  if (block.pattern === "gridMatrix") return regenerateBlockShapes(doc, block, emptyGridMatrixAxes());
-  // A matrix always has its 4 quadrants (matrix.ts), so a fresh block starts
-  // with all of them, empty, rather than growing one quadrant at a time.
-  if (block.pattern === "matrix") {
-    return regenerateBlockShapes(
-      doc,
-      block,
-      Array.from({ length: MATRIX_MAX_ROOTS }, () => ({ id: uuidv4(), text: "", children: [] })),
-    );
-  }
+  const initialOutline = patternOf(block.pattern).initialOutline?.(block.params);
+  if (initialOutline) return regenerateBlockShapes(doc, block, initialOutline);
   const newNode: OutlineNode = newRootNode(block);
 
   if (isFullyRelayoutedPattern(block.pattern)) {
@@ -775,7 +440,7 @@ export function addOutlineSibling(doc: Document, blockId: string, afterNodeId: s
   const loc = getSiblingsAndIndex(block.outline, afterNodeId);
   if (!loc) return doc;
 
-  const newNode: OutlineNode = loc.parentId === null ? newRootNode(block) : { id: uuidv4(), text: "", children: [] };
+  const newNode: OutlineNode = loc.parentId === null ? newRootNode(block) : emptyNode();
   const newOutline = updateChildren(block.outline, loc.parentId, (children) => [
     ...children.slice(0, loc.index + 1),
     newNode,
@@ -836,16 +501,7 @@ export function updateOutlineNodeText(doc: Document, blockId: string, nodeId: st
   if (!block) return doc;
   const newOutline = mapOutline(block.outline, (node) => (node.id === nodeId ? { ...node, text } : node));
 
-  // Venn: a text edit can change which set-combination an element belongs
-  // to, so its shape may need to move, split, or merge with another - matrix/
-  // pyramid/logicTree positions never depend on text (doc/spec.md §6.2.2).
-  // schedule: a bar's date fields (schedule.ts's child[0]/[1]) have no shape
-  // of their own to patch in place at all - editing one determines whether
-  // its bar renders, and where, so it always needs a full regenerate rather
-  // than the "find the matching shape, patch its content" default below
-  // (which would silently do nothing for a date field, since date fields
-  // aren't rendered as shapes to begin with).
-  if (block.pattern === "venn" || block.pattern === "schedule") {
+  if (patternOf(block.pattern).regenerateOnTextEdit) {
     return regenerateBlockShapes(doc, block, newOutline);
   }
 
@@ -879,7 +535,7 @@ export function updateShapeContentAndSync(doc: Document, shapeId: ShapeId, conte
     outline = mapOutline(outline, (node) => (node.id === nodeId ? { ...node, text: content } : node));
   }
 
-  if (owningBlock.pattern === "venn") {
+  if (patternOf(owningBlock.pattern).regenerateOnTextEdit === "panelAndCanvas") {
     return regenerateBlockShapes(doc, owningBlock, outline);
   }
 
@@ -924,7 +580,7 @@ export function updateBulletMatrixColumns(doc: Document, blockId: string, column
   if (!block || block.pattern !== "bulletMatrix") return doc;
   const newOutline = block.outline.map((row) => ({
     ...row,
-    children: columnHeaders.map((_, i) => row.children[i] ?? { id: uuidv4(), text: "", children: [] }),
+    children: columnHeaders.map((_, i) => row.children[i] ?? emptyNode()),
   }));
   const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, columnHeaders } };
   return regenerateBlockShapes(doc, updatedBlock, newOutline);
@@ -951,8 +607,8 @@ export function updatePyramidChartColumns(doc: Document, blockId: string, column
   const newOutline = block.outline.map((row) => ({
     ...row,
     children: [
-      row.children[0] ?? { id: uuidv4(), text: "", children: [] },
-      ...columnHeaders.map((_, i) => row.children[1 + i] ?? { id: uuidv4(), text: "", children: [] }),
+      row.children[0] ?? emptyNode(),
+      ...columnHeaders.map((_, i) => row.children[1 + i] ?? emptyNode()),
     ],
   }));
   const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, columnHeaders } };
@@ -1097,9 +753,8 @@ function visualTopLeft(shape: Shape): { x: number; y: number } {
 // Recomputes every generated shape's position from a fresh layout of
 // `newOutline`, keeping each shape's own id (and any style customization) by
 // matching on templateNodeIds. Used after restructuring (indent/outdent/move)
-// where the tree shape changed but no nodes were added or removed - except
-// pyramidChart, which relayoutOrRegenerate (below) routes to
-// regenerateBlockShapes instead.
+// where the tree shape changed but no nodes were added or removed, for
+// patterns whose PatternDefinition.restructure is "relayout".
 function relayoutBlock(doc: Document, block: StructuredBlock, newOutline: OutlineNode[]): Document {
   const origin = originOfBlock(doc, block);
   const layoutByNodeId = new Map<string, LayoutNode>();
@@ -1119,111 +774,15 @@ function relayoutBlock(doc: Document, block: StructuredBlock, newOutline: Outlin
   return withBlock({ ...doc, shapes }, block.id, (b) => ({ ...b, outline: newOutline }));
 }
 
-// pyramidChart's own band shapes (pyramidChart.ts's "polygon" kind) taper
-// based on a level's INDEX among its siblings, not just its own content -
-// unlike every other pattern's shapes, whose own width/height/points never
-// depend on position. relayoutBlock (below) only ever copies a fresh
-// layoutNode's x/y onto the existing shape, which is enough to reposition
-// every other pattern correctly but would leave a reordered pyramidChart
-// band's taper stale (still shaped for its OLD index). Routing it through a
-// full regenerateBlockShapes instead sidesteps that - the same tradeoff
-// (structural edits reset any manual per-shape style/id) every other
-// isFullyRelayoutedPattern already accepts for add/delete.
-//
-// schedule needs the same full-regenerate treatment for a different reason:
-// its month/row headers, grid lines, milestone markers, and dependency
-// connectors (schedule.ts) are all untracked shapes (`templateNodeIds: []`),
-// which relayoutBlock never touches (see below) - reordering a row without a
-// full regenerate would leave the whole grid/header/connector layer stale
-// against the rows' new positions.
-//
-// verticalFlow shares schedule's reason exactly: its badge-to-badge arrows
-// (verticalFlow.ts) are untracked shapes too, so reordering steps without a
-// full regenerate would leave them pointing at stale positions.
-//
-// horizontalFlow needs it for BOTH reasons at once: its circle-to-circle
-// arrows are untracked shapes like verticalFlow's, AND each circle's own
-// fill/dashed styling (horizontalFlow.ts's circleColorSlot, "first step is
-// unfilled") depends on its INDEX among siblings like pyramidChart's band
-// taper - relayoutBlock repositions a shape but never restyles it, so a
-// reordered circle would keep its old color/fill.
-//
-// flowSchedule shares horizontalFlow's "both reasons" case: its row
-// separators (and title-flanking rules) are untracked shapes like
-// verticalFlow's badge arrows, AND each row heading's own "NN | " number
-// (flowSchedule.ts's rowNumberPrefix, a bulletMarker) depends on its INDEX
-// among siblings like pyramidChart's band taper - relayoutBlock repositions a
-// shape but never touches its bulletMarker, so a reordered row would keep its
-// old number.
-//
-// Either way, "pyramid"/"logicTree"'s connector lines (regenerateTreeConnectors)
-// need a resync too: relayoutBlock repositions every ordinary node shape but,
-// having no templateNodeIds, never touches connector shapes - which would
+// Indent/outdent/move: re-places shapes as the pattern's
+// PatternDefinition.restructure says, then resyncs the tree patterns'
+// connector lines - relayoutBlock repositions every ordinary node shape but,
+// having no templateNodeIds, never touches connector shapes, which would
 // otherwise keep pointing at their pre-restructure positions.
 function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline: OutlineNode[]): Document {
   const next =
-    block.pattern === "pyramidChart" ||
-    block.pattern === "schedule" ||
-    block.pattern === "verticalFlow" ||
-    block.pattern === "horizontalFlow" ||
-    block.pattern === "flowSchedule" ||
-    block.pattern === "flowScheduleHorizontal" ||
-    block.pattern === "timeline" ||
-    block.pattern === "beforeAfter" ||
-    block.pattern === "beforeAfterHorizontal" ||
-    block.pattern === "chevronFlow" ||
-    block.pattern === "cycle" ||
-    block.pattern === "cycleWithEntry" ||
-    block.pattern === "gridMatrix"
-      ? // flowScheduleHorizontal shares flowSchedule's exact reasoning
-        // (untracked title/connector shapes, plus an index-derived number
-        // that relayoutBlock would never touch) - see flowSchedule's own
-        // comment above.
-        //
-        // timeline needs it for a different reason than its siblings above:
-        // relayoutBlock only ever repositions a shape it can still find by
-        // nodeId in the FRESH layout - it never removes one whose nodeId no
-        // longer appears there. Indenting a root event under another root
-        // (Tab on a plain event, not its position-locked time child - see
-        // StructuredTextPanel.tsx's isTimelineTimeLabel) moves it out of
-        // layoutTimeline's top-level `outline` loop entirely, so it stops
-        // appearing in that fresh layout - relayoutBlock would leave its old
-        // dot/time/description shapes stranded on the canvas at their stale
-        // position instead of removing them. Routing through
-        // regenerateBlockShapes (which discards every old shape first)
-        // avoids that; it also keeps the single shared track line's span
-        // correct without needing its own reasoning, since regenerating from
-        // scratch is already how add/delete keeps it correct.
-        //
-        // beforeAfter shares flowSchedule's/flowScheduleHorizontal's "both
-        // reasons" case: its per-column down-arrow (beforeAfter.ts) is an
-        // untracked shape whose X position depends on its column's INDEX,
-        // which relayoutBlock (skipping every shape with no templateNodeIds)
-        // would never update after a reorder - AND, like timeline, indenting
-        // a root topic under another moves it out of layoutBeforeAfter's
-        // top-level `outline` loop, which only a full regenerate cleans up
-        // (see timeline's own comment above).
-        //
-        // beforeAfterHorizontal needs it for the same "both reasons" case,
-        // just Y instead of X: its row separators and connector arrows
-        // (beforeAfterHorizontal.ts) are untracked shapes whose Y position
-        // depends on the CUMULATIVE height of every row above them (like
-        // headingBullets' own row heights), which relayoutBlock would never
-        // recompute for them after a reorder - AND the same indent-orphaning
-        // reason as timeline/beforeAfter above.
-        //
-        // chevronFlow shares flowScheduleHorizontal's "both reasons" case:
-        // its "Step N" labels are untracked, index-derived shapes, and
-        // indenting a root step under another would strand its shapes like
-        // timeline's (see above).
-        //
-        // cycle/cycleWithEntry: every arrow's angle depends on the step
-        // count and its own index, and an indented step's arrow would be
-        // stranded the same way.
-        //
-        // gridMatrix: its tiles are untracked and their count follows the
-        // label counts.
-        regenerateBlockShapes(doc, block, newOutline)
+    patternOf(block.pattern).restructure === "regenerate"
+      ? regenerateBlockShapes(doc, block, newOutline)
       : relayoutBlock(doc, block, newOutline);
   return regenerateTreeConnectors(next, block.id);
 }

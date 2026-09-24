@@ -2,6 +2,8 @@ import type { OutlineNode } from "../model/document";
 import { decoration, shapeNode, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
 import { ruledTitle } from "./parts/ruledTitle";
+import { emptyNode, emptyNodes, stringParam } from "./patternDefinition";
+import type { PatternDefinition } from "./patternDefinition";
 
 const DOT_SIZE = 18;
 const DOT_GAP = 26;
@@ -101,3 +103,13 @@ export function layoutTimeline(outline: OutlineNode[], title: string): LayoutNod
 
   return result;
 }
+
+export const timelinePattern: PatternDefinition = {
+  layout: (outline, params) => layoutTimeline(outline, stringParam(params, "title")),
+  // Indenting an event under another drops it out of the top-level loop;
+  // relayoutBlock never removes shapes, so its old ones would be stranded.
+  // The shared track line's span also follows the event count.
+  restructure: "regenerate",
+  // An event starts with its time child (child[0]).
+  newRoot: () => emptyNode(emptyNodes(1)),
+};

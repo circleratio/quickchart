@@ -4,6 +4,8 @@ import { headingRows } from "./parts/headingRows";
 import { lineStack, lineStackHeight } from "./parts/lineStack";
 import { stepNumber } from "./parts/numbering";
 import { ruledTitle } from "./parts/ruledTitle";
+import { stringParam } from "./patternDefinition";
+import type { PatternDefinition } from "./patternDefinition";
 
 const HEADING_WIDTH = 220;
 const CONTENT_WIDTH = 680;
@@ -67,3 +69,10 @@ export function layoutFlowSchedule(outline: OutlineNode[], title: string): Layou
   });
   return [...titleNodes, ...rows];
 }
+
+export const flowSchedulePattern: PatternDefinition = {
+  layout: (outline, params) => layoutFlowSchedule(outline, stringParam(params, "title")),
+  // Row separators/title rules are untracked, and each heading's "NN | "
+  // number depends on its index.
+  restructure: "regenerate",
+};

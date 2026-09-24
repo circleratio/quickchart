@@ -5,6 +5,8 @@ import { lineStack } from "./parts/lineStack";
 import { stepNumber } from "./parts/numbering";
 import { RIGHT_TRIANGLE_POINTS } from "./parts/polygon";
 import { ruledTitle } from "./parts/ruledTitle";
+import { stringParam } from "./patternDefinition";
+import type { PatternDefinition } from "./patternDefinition";
 
 const CARD_WIDTH = 220;
 const CARD_MIN_HEIGHT = 300;
@@ -137,3 +139,10 @@ export function layoutFlowScheduleHorizontal(outline: OutlineNode[], title: stri
 
   return result;
 }
+
+export const flowScheduleHorizontalPattern: PatternDefinition = {
+  layout: (outline, params) => layoutFlowScheduleHorizontal(outline, stringParam(params, "title")),
+  // Same reasons as flowSchedule: untracked connectors/title rules and
+  // index-derived step numbers.
+  restructure: "regenerate",
+};

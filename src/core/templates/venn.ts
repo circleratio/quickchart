@@ -1,6 +1,7 @@
 import type { OutlineNode } from "../model/document";
 import { shapeNode, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
+import type { PatternDefinition, RawParams } from "./patternDefinition";
 
 const CIRCLE_RADIUS_2 = 140;
 const CIRCLE_RADIUS_3 = 130;
@@ -179,3 +180,19 @@ export function layoutVenn(outline: OutlineNode[], setCount: number): LayoutNode
 
   return result;
 }
+
+export function vennSetCount(params: RawParams): number {
+  const raw = params.setCount;
+  const n = typeof raw === "number" ? raw : VENN_MAX_SETS;
+  return Math.max(VENN_MIN_SETS, Math.min(VENN_MAX_SETS, n));
+}
+
+export const vennPattern: PatternDefinition = {
+  layout: (outline, params) => layoutVenn(outline, vennSetCount(params)),
+  // The circle layout is centered on (0, 0).
+  normalizeOrigin: true,
+  restructure: "relayout",
+  // An element's text decides which set-combination it belongs to, so a text
+  // edit can move, split or merge its shape (doc/spec.md §6.2.2).
+  regenerateOnTextEdit: "panelAndCanvas",
+};

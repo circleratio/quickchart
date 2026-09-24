@@ -4,6 +4,8 @@ import type { ThemeColorSlot } from "../model/style";
 import { fixedText, shapeNode, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
 import { polygonFromAbsolute } from "./parts/polygon";
+import { stringParam } from "./patternDefinition";
+import type { PatternDefinition } from "./patternDefinition";
 
 // Ring geometry. The ring's center is (CENTER_X, CENTER_Y) in layout
 // coordinates; sync.ts's normalizeToOrigin shifts the whole block so its
@@ -338,3 +340,18 @@ export function layoutCycle(outline: OutlineNode[], title: string, withEntry: bo
   // regenerateBlockShapes in sync.ts).
   return [...shapes, ...labels];
 }
+
+// Every arrow's angle depends on the step count and its own index, and an
+// indented step's arrow would be stranded (see timeline), so both variants
+// regenerate on restructure. The ring is centered on (CENTER_X, CENTER_Y).
+export const cyclePattern: PatternDefinition = {
+  layout: (outline, params) => layoutCycle(outline, stringParam(params, "title"), false),
+  normalizeOrigin: true,
+  restructure: "regenerate",
+};
+
+export const cycleWithEntryPattern: PatternDefinition = {
+  layout: (outline, params) => layoutCycle(outline, stringParam(params, "title"), true),
+  normalizeOrigin: true,
+  restructure: "regenerate",
+};

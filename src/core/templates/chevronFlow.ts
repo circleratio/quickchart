@@ -2,6 +2,8 @@ import type { OutlineNode } from "../model/document";
 import type { Point } from "../model/shape";
 import { fixedText, shapeNode, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
+import { emptyNode, emptyNodes } from "./patternDefinition";
+import type { PatternDefinition } from "./patternDefinition";
 
 const COLUMN_WIDTH = 260;
 const COLUMN_GAP = 28;
@@ -216,3 +218,13 @@ export function layoutChevronFlow(outline: OutlineNode[]): LayoutNode[] {
 
   return result;
 }
+
+export const chevronFlowPattern: PatternDefinition = {
+  layout: (outline) => layoutChevronFlow(outline),
+  // "Step N" labels are untracked and index-derived, and an indented step
+  // would be stranded (see timeline).
+  restructure: "regenerate",
+  // A step starts with its duration child (child[0]); bullets (child[1..])
+  // have no fixed count.
+  newRoot: () => emptyNode(emptyNodes(1)),
+};

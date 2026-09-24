@@ -4,6 +4,8 @@ import type { ThemeColorSlot } from "../model/style";
 import { decoration, fixedText, shapeNode, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
 import { polygonFromAbsolute } from "./parts/polygon";
+import { emptyNodes } from "./patternDefinition";
+import type { PatternDefinition } from "./patternDefinition";
 
 export const MATRIX_MAX_ROOTS = 4;
 
@@ -250,3 +252,13 @@ export function layoutMatrix(outline: OutlineNode[], params: MatrixParams = {}):
   // regenerateBlockShapes in sync.ts).
   return [...shapes, ...labels];
 }
+
+export const matrixPattern: PatternDefinition = {
+  layout: (outline, params) => layoutMatrix(outline, params as MatrixParams),
+  // The axis cross/labels/title are laid out around the grid's own top-left.
+  normalizeOrigin: true,
+  restructure: "relayout",
+  // A matrix always has its 4 quadrants, so a fresh block starts with all of
+  // them, empty, rather than growing one quadrant at a time.
+  initialOutline: () => emptyNodes(MATRIX_MAX_ROOTS),
+};

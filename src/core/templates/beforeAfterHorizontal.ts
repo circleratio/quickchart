@@ -4,6 +4,8 @@ import type { LayoutNode } from "./layoutNode";
 import { headingRows } from "./parts/headingRows";
 import { lineStack, lineStackHeight } from "./parts/lineStack";
 import { RIGHT_TRIANGLE_POINTS } from "./parts/polygon";
+import { emptyNode, emptyNodes, stringParam } from "./patternDefinition";
+import type { PatternDefinition } from "./patternDefinition";
 
 const ROW_HEADER_WIDTH = 220;
 const COLUMN_WIDTH = 620;
@@ -128,3 +130,15 @@ export function layoutBeforeAfterHorizontal(outline: OutlineNode[], beforeLabel:
 
   return result;
 }
+
+export const beforeAfterHorizontalPattern: PatternDefinition = {
+  layout: (outline, params) =>
+    layoutBeforeAfterHorizontal(outline, stringParam(params, "beforeLabel"), stringParam(params, "afterLabel")),
+  // Column headers are placed above row 0.
+  normalizeOrigin: true,
+  // Row separators/arrows are untracked with y following every row above
+  // them, and an indented row would be stranded (see timeline).
+  restructure: "regenerate",
+  // A row starts with both its "before" and "after" groups (child[0]/[1]).
+  newRoot: () => emptyNode(emptyNodes(2)),
+};

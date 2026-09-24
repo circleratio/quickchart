@@ -2,6 +2,7 @@ import type { OutlineNode } from "../model/document";
 import type { LayoutNode } from "./layoutNode";
 import { headingRows } from "./parts/headingRows";
 import { lineStack, lineStackHeight } from "./parts/lineStack";
+import type { PatternDefinition } from "./patternDefinition";
 
 const HEADING_WIDTH = 220;
 const CONTENT_WIDTH = 700;
@@ -41,3 +42,8 @@ export function layoutHeadingBullets(outline: OutlineNode[]): LayoutNode[] {
       }),
   });
 }
+
+export const headingBulletsPattern: PatternDefinition = {
+  layout: (outline) => layoutHeadingBullets(outline),
+  restructure: "relayout",
+};

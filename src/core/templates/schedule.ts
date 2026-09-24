@@ -2,6 +2,8 @@ import type { OutlineNode } from "../model/document";
 import { decoration, fixedText, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
 import { DOWN_TRIANGLE_POINTS } from "./parts/polygon";
+import { emptyNode, emptyNodes } from "./patternDefinition";
+import type { PatternDefinition, RawParams } from "./patternDefinition";
 
 const ROW_NUMBER_WIDTH = 44;
 const ROW_LABEL_WIDTH = 260;
@@ -278,3 +280,53 @@ export function layoutSchedule(outline: OutlineNode[], params: ScheduleParams): 
 
   return result;
 }
+
+const SCHEDULE_DEFAULT_TODAY = new Date();
+const SCHEDULE_DEFAULT_YEAR = SCHEDULE_DEFAULT_TODAY.getFullYear();
+const SCHEDULE_DEFAULT_START_MONTH = SCHEDULE_DEFAULT_TODAY.getMonth() + 1; // Date's month is 0-indexed
+const SCHEDULE_DEFAULT_COLUMN_COUNT = 6;
+
+// The month range/milestones/dependency links all live in params, not the
+// outline (doc/spec.md §6.2.6) - none of them have a natural position in the
+// row/bar tree. Defaults start from this month so a freshly added block
+// renders something immediately relevant before the user sets real values.
+export function scheduleParams(params: RawParams): ScheduleParams {
+  const startYear = typeof params.startYear === "number" ? params.startYear : SCHEDULE_DEFAULT_YEAR;
+  const rawStartMonth = typeof params.startMonth === "number" ? params.startMonth : SCHEDULE_DEFAULT_START_MONTH;
+  const startMonth = Math.min(12, Math.max(1, rawStartMonth));
+  const rawColumnCount = typeof params.columnCount === "number" ? params.columnCount : SCHEDULE_DEFAULT_COLUMN_COUNT;
+  const columnCount = Math.max(1, Math.round(rawColumnCount));
+  const milestones = Array.isArray(params.milestones)
+    ? params.milestones.filter((m): m is Milestone => typeof m === "object" && m !== null && typeof m.date === "string" && typeof m.label === "string")
+    : [];
+  const connections =
+    typeof params.connections === "object" && params.connections !== null && !Array.isArray(params.connections)
+      ? Object.fromEntries(
+          Object.entries(params.connections as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+        )
+      : {};
+  return { startYear, startMonth, columnCount, milestones, connections };
+}
+
+// A bar's 2 children are position-based: child[0]=start date, child[1]=end
+// date, both "YYYY-MM-DD" strings entered via dedicated date inputs rather
+// than free text (see dateToGridX).
+function emptyBar(): OutlineNode {
+  return emptyNode(emptyNodes(2));
+}
+
+export const schedulePattern: PatternDefinition = {
+  layout: (outline, params) => layoutSchedule(outline, scheduleParams(params)),
+  // Month headers and milestones are placed above row 0.
+  normalizeOrigin: true,
+  // Headers, grid lines, milestone markers and dependency connectors are all
+  // untracked shapes whose positions follow the rows.
+  restructure: "regenerate",
+  // A bar's date fields have no shape of their own - editing one decides
+  // whether and where its bar renders.
+  regenerateOnTextEdit: "panel",
+  // A row starts with one bar, so the outline editor has something
+  // bar-shaped to expand into; a new child of a row is a new bar.
+  newRoot: () => emptyNode([emptyBar()]),
+  newChild: (outline, parentNodeId) => (outline.some((row) => row.id === parentNodeId) ? emptyBar() : undefined),
+};

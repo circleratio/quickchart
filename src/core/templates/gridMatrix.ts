@@ -1,6 +1,8 @@
 import type { OutlineNode } from "../model/document";
 import { decoration, fixedText, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
+import { emptyNode, emptyNodes, stringParam } from "./patternDefinition";
+import type { PatternDefinition } from "./patternDefinition";
 
 const TILE_WIDTH = 220;
 const TILE_HEIGHT = 220;
@@ -158,3 +160,15 @@ export function layoutGridMatrix(outline: OutlineNode[], title: string): LayoutN
   // regenerateBlockShapes in sync.ts).
   return [...shapes, ...labels];
 }
+
+// A fresh block starts as a 3x3 grid; labels can then be added/removed per
+// axis.
+const DEFAULT_SIZE = 3;
+
+export const gridMatrixPattern: PatternDefinition = {
+  layout: (outline, params) => layoutGridMatrix(outline, stringParam(params, "title")),
+  // Tiles are untracked and their count follows the label counts.
+  restructure: "regenerate",
+  // The outline is always exactly its two axes, so both come in at once.
+  initialOutline: () => [emptyNode(emptyNodes(DEFAULT_SIZE)), emptyNode(emptyNodes(DEFAULT_SIZE))],
+};

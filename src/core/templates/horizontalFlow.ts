@@ -3,6 +3,7 @@ import type { ThemeColorSlot } from "../model/style";
 import { decoration, shapeNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
 import { lineStack } from "./parts/lineStack";
+import type { PatternDefinition } from "./patternDefinition";
 
 const CIRCLE_DIAMETER = 168;
 // Horizontal gap between circles, doubling as the connector arrow's length.
@@ -107,3 +108,10 @@ export function layoutHorizontalFlow(outline: OutlineNode[]): LayoutNode[] {
 
   return result;
 }
+
+export const horizontalFlowPattern: PatternDefinition = {
+  layout: (outline) => layoutHorizontalFlow(outline),
+  // The circle-to-circle arrows are untracked, and each circle's fill/dash
+  // depends on its index.
+  restructure: "regenerate",
+};

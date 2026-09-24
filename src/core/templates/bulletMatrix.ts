@@ -1,6 +1,8 @@
 import type { OutlineNode } from "../model/document";
 import { decoration, fixedText, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
+import { emptyNode, emptyNodes, stringListParam } from "./patternDefinition";
+import type { PatternDefinition, RawParams } from "./patternDefinition";
 
 const ROW_HEADER_WIDTH = 160;
 const COLUMN_WIDTH = 380;
@@ -175,3 +177,20 @@ export function layoutBulletMatrix(outline: OutlineNode[], columnHeaders: string
 
   return result;
 }
+
+// Column headers live in params, not the outline text itself (doc/spec.md
+// §6.2.4, same reasoning as matrix.ts's axis labels).
+export function bulletMatrixColumnHeaders(params: RawParams): string[] {
+  return stringListParam(params, "columnHeaders");
+}
+
+export const bulletMatrixPattern: PatternDefinition = {
+  layout: (outline, params) => layoutBulletMatrix(outline, bulletMatrixColumnHeaders(params)),
+  // Column headers are placed above row 0.
+  normalizeOrigin: true,
+  restructure: "relayout",
+  // A row needs one empty cell per column up front - otherwise it would
+  // render with a heading and zero cells, and the generic outline editor has
+  // no way to know it should add exactly columnHeaders.length children.
+  newRoot: (params) => emptyNode(emptyNodes(bulletMatrixColumnHeaders(params).length)),
+};

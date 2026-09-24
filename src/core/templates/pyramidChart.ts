@@ -2,6 +2,8 @@ import type { OutlineNode } from "../model/document";
 import type { ThemeColorSlot } from "../model/style";
 import { decoration, fixedText, shapeNode, textNode } from "./layoutNode";
 import type { LayoutNode } from "./layoutNode";
+import { emptyNode, emptyNodes, stringListParam, stringParam } from "./patternDefinition";
+import type { PatternDefinition, RawParams } from "./patternDefinition";
 
 const PYRAMID_WIDTH = 260;
 const COLUMN_WIDTH = 200;
@@ -175,3 +177,20 @@ export function layoutPyramidChart(outline: OutlineNode[], columnHeaders: string
 
   return result;
 }
+
+// Table column headers (doc/spec.md §6.2.5) - same params shape as
+// bulletMatrix's.
+export function pyramidChartColumnHeaders(params: RawParams): string[] {
+  return stringListParam(params, "columnHeaders");
+}
+
+export const pyramidChartPattern: PatternDefinition = {
+  layout: (outline, params) => layoutPyramidChart(outline, pyramidChartColumnHeaders(params), stringParam(params, "title")),
+  normalizeOrigin: true,
+  // A band's taper depends on its index among its siblings, which
+  // relayoutBlock (repositioning only) would leave stale after a reorder.
+  restructure: "regenerate",
+  // A row needs its "scale" child plus one empty cell per column up front,
+  // for the same reason as bulletMatrix's rows.
+  newRoot: (params) => emptyNode(emptyNodes(1 + pyramidChartColumnHeaders(params).length)),
+};

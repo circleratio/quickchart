@@ -1,6 +1,7 @@
 import type { OutlineNode } from "../model/document";
 import { layoutTree } from "./treeLayout";
 import type { LayoutNode } from "./layoutNode";
+import type { PatternDefinition } from "./patternDefinition";
 
 const NODE_WIDTH = 160;
 const NODE_HEIGHT = 60;
@@ -19,3 +20,10 @@ export function layoutPyramid(outline: OutlineNode[]): LayoutNode[] {
     direction: "down",
   });
 }
+
+// ツリー図 (doc/spec.md §6.2).
+export const pyramidPattern: PatternDefinition = {
+  layout: (outline) => layoutPyramid(outline),
+  tree: { direction: "down" },
+  restructure: "relayout",
+};
