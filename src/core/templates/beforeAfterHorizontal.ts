@@ -55,7 +55,7 @@ export function layoutBeforeAfterHorizontal(outline: OutlineNode[], beforeLabel:
   const afterX = ROW_HEADER_WIDTH + COLUMN_WIDTH + ARROW_COLUMN_WIDTH;
 
   // Column headers sit above row 0 (negative y, like bulletMatrix's/
-  // pyramidChart's own column headers - see normalizeToOrigin in sync.ts,
+  // pyramidChart's own column headers - see normalizeToOrigin in materialize.ts,
   // which this pattern is registered with), each with its own solid
   // underline spanning just that column's width (not a single combined
   // rule, matching the reference image's two separate underlines).

@@ -98,7 +98,7 @@ export function layoutVenn(outline: OutlineNode[], setCount: number): LayoutNode
   const result: LayoutNode[] = [];
 
   // Circle outlines first, so they get a lower zIndex than every label and
-  // render underneath them (see regenerateBlockShapes in sync.ts).
+  // render underneath them (see regenerateBlockShapes in materialize.ts).
   sets.forEach((set, i) => {
     const c = circles[i];
     result.push(shapeNode(set, {

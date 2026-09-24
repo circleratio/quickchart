@@ -101,7 +101,7 @@ export function layoutPyramidChart(outline: OutlineNode[], columnHeaders: string
     const slot = bandColorSlot(i);
 
     // The band's fill first, so it renders underneath the item/scale labels
-    // drawn on top of it (see regenerateBlockShapes in sync.ts) - same
+    // drawn on top of it (see regenerateBlockShapes in materialize.ts) - same
     // ordering reason as matrix.ts's background square.
     result.push(shapeNode(row, {
       x: 0,

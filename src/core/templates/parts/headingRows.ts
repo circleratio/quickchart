@@ -30,11 +30,10 @@ export interface HeadingRowsOptions {
 // content on the right, rows separated by dashed rules - headingBullets
 // (doc/spec.md §6.2.3) and the patterns derived from it. Each root outline
 // node is one row whose own text is the heading; the heading cell is a single
-// shape that's both its own background and its own label (kind: "heading") -
-// a separate background shape sharing the row's nodeId would confuse
-// relayoutBlock's per-nodeId shape matching in sync.ts. A row's height follows its own content, so every row below shifts when one
-// grows - these patterns always fully regenerate (isFullyRelayoutedPattern in
-// sync.ts).
+// shape that's both its own background and its own label (kind: "heading").
+// A row's height follows its own content, so every row below shifts when one
+// grows - which is fine, since these patterns regenerate every shape on any
+// structural edit (see PatternDefinition.tree).
 export function headingRows(rows: OutlineNode[], options: HeadingRowsOptions): LayoutNode[] {
   const result: LayoutNode[] = [];
   let y = options.top;

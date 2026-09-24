@@ -170,7 +170,7 @@ export function layoutSchedule(outline: OutlineNode[], params: ScheduleParams): 
   // spanning the row-body area only (the header cells above already have
   // their own borders, same reasoning as bulletMatrix's grid - see
   // bulletMatrix.ts). Drawn before the rows/bars below so it renders
-  // underneath them (see regenerateBlockShapes in sync.ts).
+  // underneath them (see regenerateBlockShapes in materialize.ts).
   for (let i = 0; i <= columnCount; i++) {
     result.push(decoration({
       x: left + i * MONTH_COLUMN_WIDTH,

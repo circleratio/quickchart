@@ -95,7 +95,7 @@ export function layoutBeforeAfter(outline: OutlineNode[]): LayoutNode[] {
   const tobeTop = gapTop + ARROW_GAP;
 
   // The sidebar backgrounds first, so they render underneath their own
-  // labels drawn on top (see regenerateBlockShapes in sync.ts) - same
+  // labels drawn on top (see regenerateBlockShapes in materialize.ts) - same
   // ordering reason as matrix.ts's background square. Untracked (`nodeIds:
   // []`): "ASIS"/"TOBE" are fixed structural furniture, not derived from any
   // outline node, same reasoning as flowSchedule's title.

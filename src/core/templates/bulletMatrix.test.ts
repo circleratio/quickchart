@@ -47,7 +47,7 @@ describe("layoutBulletMatrix", () => {
     const rowHeader = layout.find((l) => l.nodeIds.includes("r1"))!;
     const columnHeader = layout.find((l) => l.text === "列1")!;
     expect(columnHeader.x).toBe(rowHeader.width); // column starts right where the row header ends
-    expect(columnHeader.y).toBeLessThan(0); // above row 0, until sync.ts normalizes to origin
+    expect(columnHeader.y).toBeLessThan(0); // above row 0, until materialize.ts normalizes to origin
   });
 
   it("distinguishes row headers (accent fill) from column headers (a different fill slot)", () => {

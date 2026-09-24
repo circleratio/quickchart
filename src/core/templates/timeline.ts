@@ -48,7 +48,7 @@ export function layoutTimeline(outline: OutlineNode[], title: string): LayoutNod
   const rowCenterY = (i: number) => y + i * ROW_HEIGHT + ROW_HEIGHT / 2;
 
   // The track line first, so it renders underneath the dots drawn on top of
-  // it (see regenerateBlockShapes in sync.ts) - same ordering reason as
+  // it (see regenerateBlockShapes in materialize.ts) - same ordering reason as
   // matrix.ts's background square. One continuous connector spanning every
   // event (not one segment per adjacent pair, unlike verticalFlow's badge
   // arrows - doc/spec.md §6.2.7) since the reference image reads as a single

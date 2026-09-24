@@ -117,7 +117,7 @@ export function layoutChevronFlow(outline: OutlineNode[]): LayoutNode[] {
     const [duration, ...bullets] = step.children;
 
     // Outlines first, so they render underneath the labels drawn on top of
-    // them (see regenerateBlockShapes in sync.ts).
+    // them (see regenerateBlockShapes in materialize.ts).
     result.push(shapeNode(step, {
       x,
       y: CHEVRON_Y,

@@ -157,7 +157,7 @@ export function layoutGridMatrix(outline: OutlineNode[], title: string): LayoutN
   }
 
   // Tiles/pills first, so every label renders on top of them (see
-  // regenerateBlockShapes in sync.ts).
+  // regenerateBlockShapes in materialize.ts).
   return [...shapes, ...labels];
 }
 

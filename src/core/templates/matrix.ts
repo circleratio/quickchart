@@ -249,7 +249,7 @@ export function layoutMatrix(outline: OutlineNode[], params: MatrixParams = {}):
   }
 
   // Boxes/badges/cross first, so every label renders on top of them (see
-  // regenerateBlockShapes in sync.ts).
+  // regenerateBlockShapes in materialize.ts).
   return [...shapes, ...labels];
 }
 

@@ -8,7 +8,7 @@ import { TITLE_EDITOR, stringParam } from "./patternDefinition";
 import type { PatternDefinition } from "./patternDefinition";
 
 // Ring geometry. The ring's center is (CENTER_X, CENTER_Y) in layout
-// coordinates; sync.ts's normalizeToOrigin shifts the whole block so its
+// coordinates; materialize.ts's normalizeToOrigin shifts the whole block so its
 // top-left lands at (0, 0) afterwards, so these only need to be consistent
 // with each other.
 const R_OUT = 250;
@@ -337,7 +337,7 @@ export function layoutCycle(outline: OutlineNode[], title: string, withEntry: bo
   }
 
   // Arrows first, so every label renders on top of them (see
-  // regenerateBlockShapes in sync.ts).
+  // regenerateBlockShapes in materialize.ts).
   return [...shapes, ...labels];
 }
 

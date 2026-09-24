@@ -130,7 +130,7 @@ function TextShapeRenderer({
   // `.length > 0`. A template shape isn't always tied to a specific outline
   // node: bulletMatrix's column headers (params.columnHeaders, not the
   // outline - see bulletMatrix.ts) still get `templateNodeIds: []` from
-  // regenerateBlockShapes (sync.ts), same as every other template shape,
+  // regenerateBlockShapes (materialize.ts), same as every other template shape,
   // just with zero ids in it. Treating that the same as "no template" (as a
   // `.length` check would) made them render transparent instead of their
   // intended solid fill - invisible against the canvas.

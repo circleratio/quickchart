@@ -4,7 +4,7 @@ import type { ThemeColorSlot } from "../model/style";
 
 // How a shape is painted. Each value means the same thing on every kind that
 // accepts it, so a pattern states the look it wants rather than toggling
-// kind-specific flags (see styleFor in sync.ts, which maps these onto
+// kind-specific flags (see styleFor in materialize.ts, which maps these onto
 // style.ts's functions).
 export type Paint =
   // Solid theme color, border in the same color (horizontalFlow's step
@@ -57,7 +57,7 @@ export interface LayoutNode {
   // --- Text styling, for the text-bearing kinds ("text"/"label"/"heading") ---
 
   // Horizontal text alignment; defaults to "center" (see
-  // regenerateBlockShapes in sync.ts). Bullet items use "left", matching
+  // regenerateBlockShapes in materialize.ts). Bullet items use "left", matching
   // normal bulleted-list reading order.
   align?: "left" | "center" | "right";
   // Overrides the kind's own default font size - e.g. Venn's set name wants a

@@ -159,7 +159,7 @@ export function headingStyle(
 }
 
 // Parent-child connector lines for ツリー図 ("pyramid" pattern - see
-// pyramid.ts's regenerateTreeConnectors in sync.ts). Deliberately a fixed
+// pyramid.ts's regenerateTreeConnectors in treePlacement.ts). Deliberately a fixed
 // pale gray rather than a theme color: the connecting lines are meant to read
 // as neutral structure regardless of which color theme (or how dark the
 // node's own fill) is in use, matching a typical org-chart/tree-diagram look.

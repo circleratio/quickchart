@@ -51,7 +51,7 @@ export function layoutHorizontalFlow(outline: OutlineNode[]): LayoutNode[] {
     const colorSlot = isFirst ? undefined : circleColorSlot(index);
 
     // The circle first, so it renders underneath the label shapes drawn on
-    // top of it (see regenerateBlockShapes in sync.ts) - same ordering
+    // top of it (see regenerateBlockShapes in materialize.ts) - same ordering
     // reason as pyramidChart's band/matrix's quadrant background.
     result.push(shapeNode(step, {
       x,
