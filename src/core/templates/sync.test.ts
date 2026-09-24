@@ -224,105 +224,82 @@ describe("matrix blocks (fully-relayouted pattern)", () => {
     const { document, blockId } = sync.addEmptyStructuredBlock(doc, "matrix");
     return { document: sync.addFirstOutlineNode(document, blockId), blockId };
   }
+  const shapesOf = (doc: Document) => doc.structuredBlocks[0].generatedShapeIds.map((id) => doc.shapes[id]);
+  const shapeForNode = (doc: Document, id: string, type: string) =>
+    shapesOf(doc).find((s) => s.type === type && s.templateNodeIds?.includes(id))!;
 
-  it("regenerates all shapes (not incremental placement) when a quadrant item is added", () => {
-    let { document, blockId } = matrixBlock(createEmptyDocument());
-    const q1Id = nodeId(document, blockId, 0);
-    document = sync.addOutlineSibling(document, blockId, q1Id); // 2nd quadrant
-    document = sync.addOutlineChild(document, blockId, q1Id); // item under q1
-
-    const block = document.structuredBlocks[0];
-    expect(block.outline).toHaveLength(2);
-    expect(block.outline[0].children).toHaveLength(1);
-    // 2 quadrants x (background square + title label) + 1 item shape
-    expect(block.generatedShapeIds).toHaveLength(5);
+  it("starts with all 4 empty quadrants and the axis cross", () => {
+    const { document } = matrixBlock(createEmptyDocument());
+    expect(document.structuredBlocks[0].outline).toHaveLength(4);
+    // 4 x (quadrant box + badge), plus 2 cross arrows
+    expect(shapesOf(document).filter((s) => s.type === "rect")).toHaveLength(8);
+    expect(shapesOf(document).filter((s) => s.type === "polygon")).toHaveLength(2);
   });
 
-  it("a 5th root is kept in the outline but never gets a shape", () => {
+  it("draws the quadrant boxes unfilled", () => {
+    const { document } = matrixBlock(createEmptyDocument());
+    const q1 = document.structuredBlocks[0].outline[0].id;
+    const box = shapesOf(document).find((s) => s.type === "rect" && s.templateNodeIds?.includes(q1) && s.width > 300)!;
+    expect(box.style.fill).toBe("none");
+  });
+
+  it("adding a bullet regenerates the block without moving the grid", () => {
     let { document, blockId } = matrixBlock(createEmptyDocument());
-    let lastId = nodeId(document, blockId, 0);
-    for (let i = 0; i < 4; i++) {
-      document = sync.addOutlineSibling(document, blockId, lastId);
-      const block = document.structuredBlocks[0];
-      lastId = block.outline[block.outline.length - 1].id;
+    const q1 = nodeId(document, blockId, 0);
+    const before = shapeForNode(document, q1, "rect");
+
+    document = sync.addOutlineChild(document, blockId, q1);
+
+    const after = shapeForNode(document, q1, "rect");
+    expect({ x: after.x, y: after.y }).toEqual({ x: before.x, y: before.y });
+    const bulletId = document.structuredBlocks[0].outline[0].children[0].id;
+    const bullet = shapeForNode(document, bulletId, "text");
+    expect(bullet.type === "text" && bullet.bulletMarker).toBe("□ ");
+  });
+
+  it("updateMatrixParams draws the title and axis-end labels, and removes them when cleared", () => {
+    const { document, blockId } = matrixBlock(createEmptyDocument());
+    const texts = (doc: Document) => shapesOf(doc).flatMap((s) => (s.type === "text" && s.content ? [s.content] : []));
+
+    const labeled = sync.updateMatrixParams(document, blockId, {
+      title: "人材活用のための分類",
+      axisTop: "創造",
+      axisBottom: "運用",
+      axisLeft: "個人",
+      axisRight: "組織",
+    });
+    expect(texts(labeled)).toEqual(expect.arrayContaining(["人材活用のための分類", "創造", "運用", "個人", "組織"]));
+    for (const s of shapesOf(labeled)) {
+      expect(s.x).toBeGreaterThanOrEqual(0);
+      expect(s.y).toBeGreaterThanOrEqual(0);
     }
-    const block = document.structuredBlocks[0];
-    expect(block.outline).toHaveLength(5);
-    // 4 quadrants x (background square + title label), the 5th gets neither.
-    expect(block.generatedShapeIds).toHaveLength(8);
+
+    const cleared = sync.updateMatrixParams(labeled, blockId, { title: "", axisTop: "", axisBottom: "", axisLeft: "", axisRight: "" });
+    expect(texts(cleared)).toEqual([]);
   });
 
-  it("updateMatrixAxisLabels adds/updates/removes axis label shapes", () => {
-    const { document, blockId } = matrixBlock(createEmptyDocument());
-    const withLabels = sync.updateMatrixAxisLabels(document, blockId, { axisXLabel: "X軸", axisYLabel: "Y軸" });
-    const block1 = withLabels.structuredBlocks[0];
-    const axisShapeIds1 = block1.params._axisShapeIds as string[];
-    expect(axisShapeIds1).toHaveLength(2);
-    expect(block1.generatedShapeIds).toEqual(expect.arrayContaining(axisShapeIds1));
-
-    const cleared = sync.updateMatrixAxisLabels(withLabels, blockId, { axisXLabel: "", axisYLabel: "" });
-    const block2 = cleared.structuredBlocks[0];
-    expect((block2.params._axisShapeIds as string[]).length).toBe(0);
-    for (const id of axisShapeIds1) expect(cleared.shapes[id]).toBeUndefined();
-  });
-
-  // Reproduces the same off-canvas bug as venn's circles: layoutMatrixAxisLabels
-  // places labels at negative offsets from the grid (outside it, to its
-  // left/above), so a freshly-placed block (default origin (40, 40)) put the
-  // Y-axis label's absolute x at 40 - 176 = -136 - off-canvas even though
-  // nothing appeared to be wrong with the grid itself.
-  it("never places an axis label shape at a negative coordinate", () => {
-    const { document, blockId } = matrixBlock(createEmptyDocument());
-    const withLabels = sync.updateMatrixAxisLabels(document, blockId, { axisXLabel: "X軸", axisYLabel: "Y軸" });
-    const block = withLabels.structuredBlocks[0];
-    const axisShapeIds = block.params._axisShapeIds as string[];
-    expect(axisShapeIds.length).toBeGreaterThan(0);
-    for (const id of axisShapeIds) {
-      expect(withLabels.shapes[id].x).toBeGreaterThanOrEqual(0);
-      expect(withLabels.shapes[id].y).toBeGreaterThanOrEqual(0);
-    }
-  });
-
-  // Reproduces the reported follow-up bug: clamping the label's own absolute
-  // position to >= 0 stopped it going off-canvas, but for a block placed near
-  // the canvas edge (default origin (40, 40), well inside the Y-axis label's
-  // own 176px reach) that clamp pulled the label so far right that it landed
-  // on top of the grid instead of to its left. The fix must shift the whole
-  // block to make room instead, so the label stays outside the grid.
-  it("shifts the whole block to keep the Y-axis label outside the grid (not overlapping it)", () => {
-    const { document, blockId } = matrixBlock(createEmptyDocument());
-    const withLabels = sync.updateMatrixAxisLabels(document, blockId, { axisYLabel: "Y軸" });
-    const block = withLabels.structuredBlocks[0];
-    const axisShapeId = (block.params._axisShapeIds as string[])[0];
-    const axisShape = withLabels.shapes[axisShapeId];
-
-    const gridLeftX = Math.min(
-      ...block.generatedShapeIds.filter((id) => id !== axisShapeId).map((id) => withLabels.shapes[id].x),
-    );
-    expect(axisShape.x + axisShape.width).toBeLessThanOrEqual(gridLeftX);
-  });
-
-  // Axis label shapes must not pollute originOfBlock: since they're allowed to
-  // sit "outside" the grid, if they counted toward the block's origin, every
-  // later regeneration (e.g. adding a quadrant item) would inherit their
-  // position and drift the whole grid instead of staying anchored in place.
-  it("adding a quadrant item after setting axis labels does not move the grid's origin", () => {
+  it("a text edit after setting labels keeps every shape in place", () => {
     let { document, blockId } = matrixBlock(createEmptyDocument());
-    const q1Id = nodeId(document, blockId, 0);
-    document = sync.updateMatrixAxisLabels(document, blockId, { axisXLabel: "X軸", axisYLabel: "Y軸" });
-    const q1ShapeIdBefore = document.structuredBlocks[0].generatedShapeIds.find(
-      (id) => document.shapes[id].templateNodeIds?.includes(q1Id),
-    )!;
-    const q1Before = document.shapes[q1ShapeIdBefore];
+    document = sync.updateMatrixParams(document, blockId, { axisLeft: "個人", axisTop: "創造" });
+    const before = shapesOf(document).map((s) => ({ x: s.x, y: s.y }));
+    document = sync.updateOutlineNodeText(document, blockId, nodeId(document, blockId, 0), "クリエイティブ人材");
+    expect(shapesOf(document).map((s) => ({ x: s.x, y: s.y }))).toEqual(before);
+  });
 
-    document = sync.addOutlineChild(document, blockId, q1Id);
-    const q1ShapeIdAfter = document.structuredBlocks[0].generatedShapeIds.find(
-      (id) => document.shapes[id].templateNodeIds?.includes(q1Id),
-    )!;
-    const q1After = document.shapes[q1ShapeIdAfter];
-
-    expect(q1After.x).toBe(q1Before.x);
-    expect(q1After.y).toBe(q1Before.y);
+  // Blocks saved before the redesign kept axisXLabel/axisYLabel and tracked
+  // their separately-placed label shapes in params._axisShapeIds.
+  it("migrates a pre-redesign block's axis names to the right/top ends", () => {
+    let { document, blockId } = matrixBlock(createEmptyDocument());
+    document = {
+      ...document,
+      structuredBlocks: document.structuredBlocks.map((b) => ({ ...b, params: { axisXLabel: "市場シェア", axisYLabel: "市場成長性", _axisShapeIds: [] } })),
+    };
+    document = sync.updateMatrixParams(document, blockId, { title: "PPM" });
+    const params = document.structuredBlocks[0].params;
+    expect(params.axisRight).toBe("市場シェア");
+    expect(params.axisTop).toBe("市場成長性");
+    expect(params.axisXLabel).toBeUndefined();
+    expect(params._axisShapeIds).toBeUndefined();
   });
 });
 

@@ -12,7 +12,7 @@ import { instantiateTemplate } from "../model/userTemplate";
 import { cloneShapesInto, detachExternalConnections } from "../model/shapeClone";
 import { DocumentHistory } from "./historyMiddleware";
 import * as sync from "../templates/sync";
-import type { MatrixAxisParams } from "../templates/matrix";
+import type { MatrixParams } from "../templates/matrix";
 import type { Milestone } from "../templates/schedule";
 
 type ZOrderDirection = "front" | "back" | "forward" | "backward";
@@ -124,7 +124,7 @@ interface DocumentState {
   outdentOutlineNode: (blockId: string, nodeId: string) => void;
   moveOutlineNode: (blockId: string, nodeId: string, direction: "up" | "down") => void;
   replaceOutline: (blockId: string, newOutline: StructuredBlock["outline"]) => void;
-  updateMatrixAxisLabels: (blockId: string, axisParams: MatrixAxisParams) => void;
+  updateMatrixParams: (blockId: string, params: MatrixParams) => void;
   updateVennSetCount: (blockId: string, setCount: number) => void;
   updateBulletMatrixColumns: (blockId: string, columnHeaders: string[]) => void;
   replaceBulletMatrix: (blockId: string, columnHeaders: string[], newOutline: StructuredBlock["outline"]) => void;
@@ -546,8 +546,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
       });
     },
 
-    updateMatrixAxisLabels: (blockId, axisParams) => {
-      const next = sync.updateMatrixAxisLabels(get().document, blockId, axisParams);
+    updateMatrixParams: (blockId, params) => {
+      const next = sync.updateMatrixParams(get().document, blockId, params);
       change((draft) => {
         Object.assign(draft, next);
       });

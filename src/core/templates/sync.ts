@@ -21,8 +21,8 @@ import {
 import type { ShapeStyle } from "../model/style";
 import { layoutPyramid } from "./pyramid";
 import { layoutLogicTree } from "./logicTree";
-import { layoutMatrix, layoutMatrixAxisLabels } from "./matrix";
-import type { MatrixAxisParams } from "./matrix";
+import { layoutMatrix, matrixParams, MATRIX_MAX_ROOTS } from "./matrix";
+import type { MatrixParams } from "./matrix";
 import { layoutVenn, VENN_MAX_SETS, VENN_MIN_SETS } from "./venn";
 import { layoutHeadingBullets } from "./headingBullets";
 import { layoutBulletMatrix } from "./bulletMatrix";
@@ -128,7 +128,7 @@ function gridMatrixTitle(params: Record<string, unknown>): string {
 }
 
 // beforeAfterHorizontal's two column headers (doc/spec.md §6.2.13) - a fixed
-// pair like matrix's axisXLabel/axisYLabel (MatrixAxisParams), not a dynamic
+// pair like matrix's axis-end labels (MatrixParams), not a dynamic
 // list like bulletMatrix's columnHeaders, since this pattern always has
 // exactly 2 content columns.
 function beforeAfterHorizontalLabels(params: Record<string, unknown>): { beforeLabel: string; afterLabel: string } {
@@ -168,13 +168,13 @@ function scheduleParams(params: Record<string, unknown>): ScheduleParams {
 
 function layoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[], params: Record<string, unknown> = {}): LayoutNode[] {
   const nodes = rawLayoutFor(pattern, outline, params);
-  // venn.ts's circle-centered layout, and bulletMatrix's column headers
-  // (placed above row 0), can both produce negative coordinates (see
-  // normalizeToOrigin below); matrix.ts reserves its own fixed,
-  // always-non-negative margin for axis labels (AXIS_MARGIN_X/Y) that must
-  // stay intact, and pyramid/logicTree's cursor-based placement already
-  // starts at (0, 0), so normalizing them here would be a no-op at best.
-  return pattern === "venn" || pattern === "bulletMatrix" || pattern === "pyramidChart" || pattern === "schedule" ||
+  // venn.ts's circle-centered layout, bulletMatrix's column headers (placed
+  // above row 0), and matrix.ts's axis cross/labels/title (laid out around
+  // the grid's own top-left) can all produce negative coordinates (see
+  // normalizeToOrigin below); pyramid/logicTree's cursor-based placement
+  // already starts at (0, 0), so normalizing them here would be a no-op at
+  // best.
+  return pattern === "venn" || pattern === "matrix" || pattern === "bulletMatrix" || pattern === "pyramidChart" || pattern === "schedule" ||
     pattern === "beforeAfterHorizontal" ||
     pattern === "cycle" ||
     pattern === "cycleWithEntry"
@@ -189,7 +189,7 @@ function rawLayoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[
     case "logicTree":
       return layoutLogicTree(outline);
     case "matrix":
-      return layoutMatrix(outline);
+      return layoutMatrix(outline, params as MatrixParams);
     case "venn":
       return layoutVenn(outline, vennSetCount(params));
     case "headingBullets":
@@ -256,7 +256,9 @@ function styleFor(themeId: string, layoutNode: LayoutNode): ShapeStyle {
     layoutNode.kind === "ellipse" || layoutNode.kind === "rect"
       ? layoutNode.fillColorSlot !== undefined
         ? filledShapeStyle(themeId, layoutNode.fillColorSlot)
-        : layoutNode.neutralFill
+        : layoutNode.strokeColorSlot !== undefined
+          ? strokeOnlyStyle(themeId, layoutNode.strokeColorSlot)
+          : layoutNode.neutralFill
           ? neutralPanelStyle()
           : outlineStyle(themeId, layoutNode.dashed === true)
       : layoutNode.kind === "line"
@@ -723,6 +725,15 @@ export function addFirstOutlineNode(doc: Document, blockId: string): Document {
   // gridMatrix's outline is always exactly its two axes (gridMatrix.ts), so
   // both come in at once rather than one root at a time.
   if (block.pattern === "gridMatrix") return regenerateBlockShapes(doc, block, emptyGridMatrixAxes());
+  // A matrix always has its 4 quadrants (matrix.ts), so a fresh block starts
+  // with all of them, empty, rather than growing one quadrant at a time.
+  if (block.pattern === "matrix") {
+    return regenerateBlockShapes(
+      doc,
+      block,
+      Array.from({ length: MATRIX_MAX_ROOTS }, () => ({ id: uuidv4(), text: "", children: [] })),
+    );
+  }
   const newNode: OutlineNode = newRootNode(block);
 
   if (isFullyRelayoutedPattern(block.pattern)) {
@@ -876,75 +887,17 @@ export function updateShapeContentAndSync(doc: Document, shapeId: ShapeId, conte
   return withBlock({ ...doc, shapes }, owningBlock.id, (b) => ({ ...b, outline }));
 }
 
-// Matrix axis labels aren't tied to outline nodes (doc/spec.md §6.2.1), so
-// they're tracked via params._axisShapeIds instead of templateNodeIds; every
-// call discards and regenerates them (cheap - at most 2 shapes).
-export function updateMatrixAxisLabels(doc: Document, blockId: string, axisParams: MatrixAxisParams): Document {
+// The matrix's title and axis-end labels (doc/spec.md §6.2.1) live in params
+// and are laid out with the rest of the block, so a change just regenerates
+// it (same as updateFlowScheduleTitle). A pre-redesign block's axisXLabel/
+// axisYLabel are carried over into their new fields (matrixParams) and
+// dropped, along with its stale _axisShapeIds.
+export function updateMatrixParams(doc: Document, blockId: string, update: MatrixParams): Document {
   const block = findBlock(doc, blockId);
   if (!block || block.pattern !== "matrix") return doc;
-
-  const shapes = { ...doc.shapes };
-  const oldIds = (block.params._axisShapeIds as ShapeId[] | undefined) ?? [];
-  for (const id of oldIds) delete shapes[id];
-
-  const mergedParams = { ...block.params, ...axisParams };
-  const labels = layoutMatrixAxisLabels(mergedParams);
-  let origin = originOfBlock(doc, block);
-
-  // label.x/y are deliberately negative (outside the grid, to its
-  // left/above). Clamping just the label's own absolute position to >= 0
-  // isn't enough on its own - a block placed near the canvas edge (the
-  // default placement is (40, 40), well within the axis labels' own
-  // 176x44 reach) would pull the label so far right/down that it overlaps
-  // the grid instead of sitting outside it. So instead, if the grid doesn't
-  // currently have enough clearance, shift every shape the block has
-  // generated so it does - this only ever grows the clearance, and once
-  // grown it stays (origin is derived from the shapes' own position), so
-  // repeated calls don't keep shifting it further.
-  const neededMinX = Math.max(0, -Math.min(0, ...labels.map((l) => l.x)));
-  const neededMinY = Math.max(0, -Math.min(0, ...labels.map((l) => l.y)));
-  const dx = Math.max(0, neededMinX - origin.x);
-  const dy = Math.max(0, neededMinY - origin.y);
-  if (dx > 0 || dy > 0) {
-    for (const id of block.generatedShapeIds) {
-      const s = shapes[id];
-      if (s) shapes[id] = { ...s, x: s.x + dx, y: s.y + dy };
-    }
-    origin = { x: origin.x + dx, y: origin.y + dy };
-  }
-
-  const newIds: ShapeId[] = [];
-  let zIndex = Object.keys(shapes).length;
-  for (const label of labels) {
-    const shape: TextShape = {
-      id: uuidv4(),
-      type: "text",
-      x: origin.x + label.x,
-      y: origin.y + label.y,
-      width: label.width,
-      height: label.height,
-      rotation: 0,
-      style: defaultShapeStyle(doc.colorThemeId),
-      zIndex: zIndex++,
-      content: label.text,
-      align: "center",
-    };
-    shapes[shape.id] = shape;
-    newIds.push(shape.id);
-  }
-
-  const oldIdSet = new Set(oldIds);
-  const layers = doc.layers.map((layer) =>
-    layer.id === DEFAULT_LAYER_ID
-      ? { ...layer, shapeIds: [...layer.shapeIds.filter((id) => !oldIdSet.has(id)), ...newIds] }
-      : layer,
-  );
-
-  return withBlock({ ...doc, shapes, layers }, blockId, (b) => ({
-    ...b,
-    params: { ...mergedParams, _axisShapeIds: newIds },
-    generatedShapeIds: [...b.generatedShapeIds.filter((id) => !oldIdSet.has(id)), ...newIds],
-  }));
+  const { axisXLabel: _x, axisYLabel: _y, _axisShapeIds: _ids, ...rest } = block.params;
+  const updatedBlock: StructuredBlock = { ...block, params: { ...rest, ...matrixParams(block.params), ...update } };
+  return regenerateBlockShapes(doc, updatedBlock, block.outline);
 }
 
 // Shrinking setCount drops any roots beyond the new count (and their shapes) -
@@ -1008,11 +961,7 @@ export function updatePyramidChartColumns(doc: Document, blockId: string, column
 
 // pyramidChart's overall title (doc/spec.md §6.2.5) isn't tied to an outline
 // node, same reasoning as matrix's axis labels/bulletMatrix's column headers.
-// Unlike updateMatrixAxisLabels' incremental clearance-shifting logic, a
-// title change just regenerates the whole (cheap, single-block) diagram -
-// there's no equivalent "existing shapes must not overlap the new label"
-// concern here since the title always sits outside/above every generated
-// shape (pyramidChart.ts).
+// A title change just regenerates the whole (cheap, single-block) diagram.
 export function updatePyramidChartTitle(doc: Document, blockId: string, title: string): Document {
   const block = findBlock(doc, blockId);
   if (!block || block.pattern !== "pyramidChart") return doc;
@@ -1112,11 +1061,11 @@ export function updateScheduleConnections(doc: Document, blockId: string, connec
   return regenerateBlockShapes(doc, updatedBlock, block.outline);
 }
 
-// Matrix axis labels (params._axisShapeIds) sit outside the grid, deliberately
-// at negative offsets from it (layoutMatrixAxisLabels), and are excluded here
-// so they can never pull the computed origin - and so every later
-// regeneration - further negative themselves (see updateMatrixAxisLabels's
-// own clamp for how their absolute position is kept on-canvas).
+// params._axisShapeIds only exists on matrix blocks saved before the
+// redesign (doc/spec.md §6.2.1), whose axis labels were separately-placed
+// shapes outside the grid; they're excluded so the first regenerate of such a
+// block (which drops them - they're in generatedShapeIds too - and lays the
+// labels out with the rest) keeps the grid anchored where it was.
 function originOfBlock(doc: Document, block: StructuredBlock): { x: number; y: number } {
   const axisShapeIds = new Set((block.params._axisShapeIds as ShapeId[] | undefined) ?? []);
   const shapes = block.generatedShapeIds

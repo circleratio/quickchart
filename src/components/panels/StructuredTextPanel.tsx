@@ -5,7 +5,8 @@ import { useSelectionStore } from "../../core/store/selectionStore";
 import { useStructuredEditorStore } from "../../core/store/structuredEditorStore";
 import { parseOutline } from "../../core/templates/outlineParser";
 import { parseBulletMatrixMarkdown } from "../../core/templates/bulletMatrixParser";
-import { MATRIX_MAX_ROOTS } from "../../core/templates/matrix";
+import { MATRIX_MAX_ROOTS, matrixParams } from "../../core/templates/matrix";
+import type { MatrixParams } from "../../core/templates/matrix";
 import { VENN_MAX_SETS, VENN_MIN_SETS } from "../../core/templates/venn";
 import type { Milestone } from "../../core/templates/schedule";
 import type { OutlineNode, StructuredBlock } from "../../core/model/document";
@@ -13,7 +14,7 @@ import type { OutlineNode, StructuredBlock } from "../../core/model/document";
 const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
   pyramid: "ツリー図",
   logicTree: "ロジックツリー図",
-  matrix: "マトリクス",
+  matrix: "４象限マトリクス",
   venn: "ベン図",
   headingBullets: "見出し付き箇条書き",
   bulletMatrix: "箇条書きマトリクス",
@@ -87,7 +88,7 @@ export function StructuredTextPanel() {
   const document = useDocumentStore((s) => s.document);
   const addFirstOutlineNode = useDocumentStore((s) => s.addFirstOutlineNode);
   const replaceOutline = useDocumentStore((s) => s.replaceOutline);
-  const updateMatrixAxisLabels = useDocumentStore((s) => s.updateMatrixAxisLabels);
+  const updateMatrixParams = useDocumentStore((s) => s.updateMatrixParams);
   const updateVennSetCount = useDocumentStore((s) => s.updateVennSetCount);
   const updateBulletMatrixColumns = useDocumentStore((s) => s.updateBulletMatrixColumns);
   const replaceBulletMatrix = useDocumentStore((s) => s.replaceBulletMatrix);
@@ -256,12 +257,7 @@ export function StructuredTextPanel() {
       )}
 
       {block.pattern === "matrix" && (
-        <MatrixAxisLabelInputs
-          key={block.id}
-          axisXLabel={typeof block.params.axisXLabel === "string" ? block.params.axisXLabel : ""}
-          axisYLabel={typeof block.params.axisYLabel === "string" ? block.params.axisYLabel : ""}
-          onCommit={(axisParams) => updateMatrixAxisLabels(block.id, axisParams)}
-        />
+        <MatrixParamInputs key={block.id} params={matrixParams(block.params)} onCommit={(params) => updateMatrixParams(block.id, params)} />
       )}
 
       {block.pattern === "bulletMatrix" ? (
@@ -293,35 +289,39 @@ function VennSetCountControl({ value, onChange }: { value: number; onChange: (n:
   );
 }
 
-function MatrixAxisLabelInputs({
-  axisXLabel,
-  axisYLabel,
-  onCommit,
-}: {
-  axisXLabel: string;
-  axisYLabel: string;
-  onCommit: (params: { axisXLabel?: string; axisYLabel?: string }) => void;
-}) {
-  const [x, setX] = useState(axisXLabel);
-  const [y, setY] = useState(axisYLabel);
+// The matrix's title and its four axis-end labels (doc/spec.md §6.2.1), each
+// committed on blur.
+const MATRIX_PARAM_FIELDS: Array<{ key: keyof MatrixParams; label: string; placeholder: string }> = [
+  { key: "title", label: "タイトル", placeholder: "例: 人材活用のための分類" },
+  { key: "axisTop", label: "上端", placeholder: "例: 創造" },
+  { key: "axisBottom", label: "下端", placeholder: "例: 運用" },
+  { key: "axisLeft", label: "左端", placeholder: "例: 個人" },
+  { key: "axisRight", label: "右端", placeholder: "例: 組織" },
+];
+
+function MatrixParamInputs({ params, onCommit }: { params: Required<MatrixParams>; onCommit: (params: MatrixParams) => void }) {
+  const [values, setValues] = useState(params);
 
   return (
     <div className="matrix-axis-labels">
-      <h4>軸ラベル</h4>
-      <label>
-        横軸
-        <input value={x} onChange={(e) => setX(e.target.value)} onBlur={() => onCommit({ axisXLabel: x })} />
-      </label>
-      <label>
-        縦軸
-        <input value={y} onChange={(e) => setY(e.target.value)} onBlur={() => onCommit({ axisYLabel: y })} />
-      </label>
+      <h4>タイトル・軸ラベル</h4>
+      {MATRIX_PARAM_FIELDS.map(({ key, label, placeholder }) => (
+        <label key={key}>
+          {label}
+          <input
+            value={values[key]}
+            placeholder={placeholder}
+            onChange={(e) => setValues({ ...values, [key]: e.target.value })}
+            onBlur={() => onCommit({ [key]: values[key] })}
+          />
+        </label>
+      ))}
     </div>
   );
 }
 
 // beforeAfterHorizontal's two column headers (doc/spec.md §6.2.13) - a fixed
-// pair like MatrixAxisLabelInputs' above, so it reuses that component's
+// pair, so it reuses MatrixParamInputs' (above), so it reuses that component's
 // styling rather than needing its own CSS class.
 function BeforeAfterHorizontalLabelInputs({
   labels,
@@ -356,7 +356,7 @@ function BeforeAfterHorizontalLabelInputs({
 // and flowSchedule's (§6.2.9), flowScheduleHorizontal's (§6.2.10), and
 // timeline's (§6.2.11) all share this exact shape, so every one of them
 // reuses it rather than each carrying its own near-identical input. Unlike
-// MatrixAxisLabelInputs' pair, it reuses that component's styling
+// MatrixParamInputs' fields, it reuses that component's styling
 // (.matrix-axis-labels) rather than needing its own CSS class.
 function PyramidChartTitleInput({ title, onCommit }: { title: string; onCommit: (title: string) => void }) {
   const [value, setValue] = useState(title);
@@ -373,10 +373,10 @@ function PyramidChartTitleInput({ title, onCommit }: { title: string; onCommit: 
 }
 
 // bulletMatrix's column headers (doc/spec.md §6.2.4) - a dynamic list rather
-// than MatrixAxisLabelInputs' fixed pair, since a bullet matrix can have any
+// than MatrixParamInputs' fixed fields, since a bullet matrix can have any
 // number of columns. Adding/removing a column commits immediately (it
 // resizes every row's cells right away - see updateBulletMatrixColumns in
-// sync.ts); renaming one commits on blur, matching MatrixAxisLabelInputs.
+// sync.ts); renaming one commits on blur, matching MatrixParamInputs.
 function BulletMatrixColumnInputs({
   columnHeaders,
   onCommit,

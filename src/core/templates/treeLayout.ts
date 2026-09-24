@@ -118,7 +118,10 @@ export interface LayoutNode {
   // (style.ts's strokeOnlyStyle), instead of the usual solid themed fill -
   // chevronFlow's chevron and body-box outlines (doc/spec.md §6.2.14), which
   // retrace their own path so one side stays open (see chevronFlow.ts).
-  // Takes priority over `fillColorSlot`/`neutralFill`.
+  // Takes priority over `fillColorSlot`/`neutralFill`. For an "ellipse"/
+  // "rect" kind with no `fillColorSlot`: the same unfilled outline, in this
+  // shade instead of outlineStyle's fixed primary[0] - matrix's quadrant
+  // boxes and outlined badge (doc/spec.md §6.2.1).
   strokeColorSlot?: ThemeColorSlot;
   // Rotation in degrees around the node's own center, forwarded verbatim to
   // ShapeBase.rotation - gridMatrix's vertical axis name (doc/spec.md
