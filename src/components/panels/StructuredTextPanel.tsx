@@ -29,6 +29,7 @@ const PATTERN_LABEL: Record<StructuredBlock["pattern"], string> = {
   chevronFlow: "フローチャート",
   cycle: "サイクル図（円のみ）",
   cycleWithEntry: "サイクル図（導入部あり）",
+  gridMatrix: "N×Nマトリクス",
 };
 
 const BULLET_MATRIX_IMPORT_PLACEHOLDER =
@@ -73,6 +74,8 @@ function beforeAfterHorizontalLabels(params: Record<string, unknown>): { beforeL
 // layout functions ignoring any excess as a defensive backstop.
 function rootLimitFor(block: StructuredBlock): number {
   if (block.pattern === "matrix") return MATRIX_MAX_ROOTS;
+  // gridMatrix is always exactly its horizontal + vertical axis (gridMatrix.ts).
+  if (block.pattern === "gridMatrix") return 2;
   if (block.pattern === "venn") {
     const raw = block.params.setCount;
     return typeof raw === "number" ? raw : VENN_MAX_SETS;
@@ -94,6 +97,7 @@ export function StructuredTextPanel() {
   const updateFlowScheduleHorizontalTitle = useDocumentStore((s) => s.updateFlowScheduleHorizontalTitle);
   const updateTimelineTitle = useDocumentStore((s) => s.updateTimelineTitle);
   const updateCycleTitle = useDocumentStore((s) => s.updateCycleTitle);
+  const updateGridMatrixTitle = useDocumentStore((s) => s.updateGridMatrixTitle);
   const updateBeforeAfterHorizontalLabels = useDocumentStore((s) => s.updateBeforeAfterHorizontalLabels);
 
   const activeBlockId = useStructuredEditorStore((s) => s.activeBlockId);
@@ -202,6 +206,14 @@ export function StructuredTextPanel() {
         />
       )}
 
+      {block.pattern === "gridMatrix" && (
+        <PyramidChartTitleInput
+          key={`${block.id}-title`}
+          title={typeof block.params.title === "string" ? block.params.title : ""}
+          onCommit={(title) => updateGridMatrixTitle(block.id, title)}
+        />
+      )}
+
       {(block.pattern === "cycle" || block.pattern === "cycleWithEntry") && (
         <PyramidChartTitleInput
           key={`${block.id}-title`}
@@ -224,7 +236,7 @@ export function StructuredTextPanel() {
         </button>
       ) : (
         <div className="outline-tree">
-          {block.outline.map((node) => (
+          {block.outline.map((node, i) => (
             <OutlineRow
               key={node.id}
               node={node}
@@ -232,11 +244,12 @@ export function StructuredTextPanel() {
               depth={0}
               disableAddSibling={atRootLimit}
               pattern={block.pattern}
+              index={i}
             />
           ))}
         </div>
       )}
-      {block.outline.length > 0 && atRootLimit && (
+      {block.outline.length > 0 && atRootLimit && block.pattern !== "gridMatrix" && (
         <p className="outline-limit-note">
           {block.pattern === "matrix" ? "マトリクスは4象限までです。" : "設定した集合数までです。"}
         </p>
@@ -695,6 +708,7 @@ function OutlineRow({
   disableAddSibling,
   pattern,
   index,
+  rootIndex,
 }: {
   node: OutlineNode;
   blockId: string;
@@ -702,6 +716,9 @@ function OutlineRow({
   disableAddSibling?: boolean;
   pattern: StructuredBlock["pattern"];
   index?: number;
+  // Index of the root (depth-0) node this row sits under - gridMatrix's
+  // labels need to know which axis they belong to.
+  rootIndex?: number;
 }) {
   const updateOutlineNodeText = useDocumentStore((s) => s.updateOutlineNodeText);
   const addOutlineChild = useDocumentStore((s) => s.addOutlineChild);
@@ -769,6 +786,12 @@ function OutlineRow({
   // position-locked the same way as timeline's time label above; its sibling
   // bullets (child[1..]) stay fully reorderable/deletable.
   const isChevronFlowDuration = pattern === "chevronFlow" && depth === 1 && index === 0;
+  // gridMatrix's two roots ARE its axes (root[0] horizontal, root[1]
+  // vertical - see gridMatrix.ts), so they can't be moved, deleted or nested.
+  // Their labels (depth 1) stay reorderable/deletable, but never nest: Tab is
+  // blocked at every depth, and labels get no "+子".
+  const isGridMatrixAxis = pattern === "gridMatrix" && depth === 0;
+  const isGridMatrix = pattern === "gridMatrix";
   const isFixedPositionChild =
     isBulletMatrixCell ||
     isPyramidChartValue ||
@@ -776,17 +799,18 @@ function OutlineRow({
     isTimelineTimeLabel ||
     isBeforeAfterBlock ||
     isBeforeAfterHorizontalCell ||
-    isChevronFlowDuration;
+    isChevronFlowDuration ||
+    isGridMatrixAxis;
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Tab") {
       e.preventDefault();
-      if (isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock || isBeforeAfterHorizontalCell || isChevronFlowDuration) return;
+      if (isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock || isBeforeAfterHorizontalCell || isChevronFlowDuration || isGridMatrix) return;
       if (e.shiftKey) outdentOutlineNode(blockId, node.id);
       else indentOutlineNode(blockId, node.id);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (disableAddSibling || isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock || isBeforeAfterHorizontalCell || isChevronFlowDuration) return;
+      if (disableAddSibling || isPyramidChartValue || isVerticalFlowBadge || isTimelineTimeLabel || isBeforeAfterBlock || isBeforeAfterHorizontalCell || isChevronFlowDuration || isGridMatrixAxis) return;
       addOutlineSibling(blockId, node.id);
       const block = useDocumentStore.getState().document.structuredBlocks.find((b) => b.id === blockId);
       const newNodeId = block ? findNextSiblingId(block.outline, node.id) : null;
@@ -822,7 +846,15 @@ function OutlineRow({
                           ? "所要期間(例: 1週間、空欄可)"
                           : pattern === "cycleWithEntry" && depth === 0 && index === 0
                             ? "導入部(ループに入る前の段階)"
-                            : "項目を入力"
+                            : isGridMatrixAxis
+                              ? index === 0
+                                ? "横軸の名前(例: 時間軸)"
+                                : "縦軸の名前(例: 現在の事業との近さ)"
+                              : isGridMatrix
+                                ? rootIndex === 0
+                                  ? "列の見出し(左から。例: 短期)"
+                                  : "行の見出し(上から。例: 遠)"
+                                : "項目を入力"
             }
             onChange={(e) => updateOutlineNodeText(blockId, node.id, e.target.value)}
             onKeyDown={handleKeyDown}
@@ -838,7 +870,7 @@ function OutlineRow({
             </button>
           </>
         )}
-        {!isPyramidChartValue && !isVerticalFlowBadge && !isTimelineTimeLabel && !isChevronFlowDuration && (
+        {!isPyramidChartValue && !isVerticalFlowBadge && !isTimelineTimeLabel && !isChevronFlowDuration && !(isGridMatrix && depth > 0) && (
           <button type="button" title="子を追加" onClick={() => addOutlineChild(blockId, node.id)}>
             +子
           </button>
@@ -850,7 +882,15 @@ function OutlineRow({
         )}
       </div>
       {node.children.map((child, i) => (
-        <OutlineRow key={child.id} node={child} blockId={blockId} depth={depth + 1} pattern={pattern} index={i} />
+        <OutlineRow
+          key={child.id}
+          node={child}
+          blockId={blockId}
+          depth={depth + 1}
+          pattern={pattern}
+          index={i}
+          rootIndex={depth === 0 ? index : rootIndex}
+        />
       ))}
     </div>
   );

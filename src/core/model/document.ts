@@ -37,7 +37,8 @@ export interface StructuredBlock {
     | "beforeAfterHorizontal"
     | "chevronFlow"
     | "cycle"
-    | "cycleWithEntry";
+    | "cycleWithEntry"
+    | "gridMatrix";
   outline: OutlineNode[];
   params: Record<string, unknown>;
   generatedShapeIds: ShapeId[];

@@ -137,6 +137,7 @@ interface DocumentState {
   updateFlowScheduleHorizontalTitle: (blockId: string, title: string) => void;
   updateTimelineTitle: (blockId: string, title: string) => void;
   updateCycleTitle: (blockId: string, title: string) => void;
+  updateGridMatrixTitle: (blockId: string, title: string) => void;
   updateBeforeAfterHorizontalLabels: (blockId: string, labels: { beforeLabel: string; afterLabel: string }) => void;
 
   // User templates (doc/spec.md §6.4): placing one adds plain shapes (no
@@ -610,6 +611,13 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
 
     updateCycleTitle: (blockId, title) => {
       const next = sync.updateCycleTitle(get().document, blockId, title);
+      change((draft) => {
+        Object.assign(draft, next);
+      });
+    },
+
+    updateGridMatrixTitle: (blockId, title) => {
+      const next = sync.updateGridMatrixTitle(get().document, blockId, title);
       change((draft) => {
         Object.assign(draft, next);
       });

@@ -914,6 +914,43 @@ describe("chevronFlow blocks (fully-relayouted pattern)", () => {
   });
 });
 
+describe("gridMatrix blocks (fully-relayouted pattern)", () => {
+  function gridMatrixBlock(doc: Document) {
+    const { document, blockId } = sync.addEmptyStructuredBlock(doc, "gridMatrix");
+    return { document: sync.addFirstOutlineNode(document, blockId), blockId };
+  }
+  const tilesOf = (doc: Document) =>
+    doc.structuredBlocks[0].generatedShapeIds.map((id) => doc.shapes[id]).filter((s) => s.type === "rect" && s.cornerRadius === undefined);
+
+  it("starts as a 3x3 grid with both axes", () => {
+    const { document } = gridMatrixBlock(createEmptyDocument());
+    const outline = document.structuredBlocks[0].outline;
+    expect(outline).toHaveLength(2);
+    expect(outline.map((axis) => axis.children.length)).toEqual([3, 3]);
+    expect(tilesOf(document)).toHaveLength(9);
+  });
+
+  it("adds a column of tiles when a column label is added", () => {
+    let { document, blockId } = gridMatrixBlock(createEmptyDocument());
+    const lastColumn = document.structuredBlocks[0].outline[0].children[2].id;
+    document = sync.addOutlineSibling(document, blockId, lastColumn);
+    expect(tilesOf(document)).toHaveLength(12);
+  });
+
+  it("does not drift when regenerated despite the rotated vertical axis name", () => {
+    let { document, blockId } = gridMatrixBlock(createEmptyDocument());
+    const yAxisId = document.structuredBlocks[0].outline[1].id;
+    const rotated = document.structuredBlocks[0].generatedShapeIds.map((id) => document.shapes[id]).find((s) => s.templateNodeIds?.includes(yAxisId))!;
+    expect(rotated.rotation).toBe(-90);
+    const before = tilesOf(document).map((s) => ({ x: s.x, y: s.y }));
+
+    document = sync.updateGridMatrixTitle(document, blockId, "");
+    document = sync.updateGridMatrixTitle(document, blockId, "");
+
+    expect(tilesOf(document).map((s) => ({ x: s.x, y: s.y }))).toEqual(before);
+  });
+});
+
 describe("cycle blocks (fully-relayouted pattern)", () => {
   it("re-lays out every arrow around the ring when a step is added", () => {
     let { document, blockId } = sync.addEmptyStructuredBlock(createEmptyDocument(), "cycle");

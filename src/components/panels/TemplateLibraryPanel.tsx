@@ -18,6 +18,7 @@ const PATTERN_ENTRIES: PatternEntry[] = [
   { kind: "leaf", id: "pyramid", label: "ツリー図", available: true },
   { kind: "leaf", id: "logicTree", label: "ロジックツリー図", available: true },
   { kind: "leaf", id: "matrix", label: "マトリクス", available: true },
+  { kind: "leaf", id: "gridMatrix", label: "N×Nマトリクス", available: true },
   { kind: "leaf", id: "venn", label: "ベン図", available: true },
   { kind: "leaf", id: "headingBullets", label: "見出し付き箇条書き", available: true },
   { kind: "leaf", id: "bulletMatrix", label: "箇条書きマトリクス", available: true },

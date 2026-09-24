@@ -120,6 +120,11 @@ export interface LayoutNode {
   // retrace their own path so one side stays open (see chevronFlow.ts).
   // Takes priority over `fillColorSlot`/`neutralFill`.
   strokeColorSlot?: ThemeColorSlot;
+  // Rotation in degrees around the node's own center, forwarded verbatim to
+  // ShapeBase.rotation - gridMatrix's vertical axis name (doc/spec.md
+  // §6.2.16), since text shapes have no vertical writing mode. Undefined
+  // behaves as 0.
+  rotation?: number;
 }
 
 export interface TreeLayoutOptions {

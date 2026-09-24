@@ -38,6 +38,7 @@ import { layoutBeforeAfter } from "./beforeAfter";
 import { layoutBeforeAfterHorizontal } from "./beforeAfterHorizontal";
 import { layoutChevronFlow } from "./chevronFlow";
 import { layoutCycle } from "./cycle";
+import { layoutGridMatrix } from "./gridMatrix";
 import type { LayoutNode } from "./treeLayout";
 
 // All functions here take a plain Document and return a new plain Document -
@@ -67,7 +68,8 @@ function isFullyRelayoutedPattern(pattern: StructuredBlock["pattern"]): boolean 
     pattern === "beforeAfterHorizontal" ||
     pattern === "chevronFlow" ||
     pattern === "cycle" ||
-    pattern === "cycleWithEntry"
+    pattern === "cycleWithEntry" ||
+    pattern === "gridMatrix"
   );
 }
 
@@ -117,6 +119,11 @@ function timelineTitle(params: Record<string, unknown>): string {
 // cycle/cycleWithEntry's center title (doc/spec.md §6.2.15) - same
 // params.title shape.
 function cycleTitle(params: Record<string, unknown>): string {
+  return typeof params.title === "string" ? params.title : "";
+}
+
+// gridMatrix's title (doc/spec.md §6.2.16) - same params.title shape.
+function gridMatrixTitle(params: Record<string, unknown>): string {
   return typeof params.title === "string" ? params.title : "";
 }
 
@@ -215,6 +222,8 @@ function rawLayoutFor(pattern: StructuredBlock["pattern"], outline: OutlineNode[
       return layoutCycle(outline, cycleTitle(params), false);
     case "cycleWithEntry":
       return layoutCycle(outline, cycleTitle(params), true);
+    case "gridMatrix":
+      return layoutGridMatrix(outline, gridMatrixTitle(params));
     default:
       return [];
   }
@@ -614,6 +623,19 @@ function emptyChevronFlowStep(): OutlineNode {
   return { id: uuidv4(), text: "", children: [{ id: uuidv4(), text: "", children: [] }] };
 }
 
+// gridMatrix's two fixed axes (root[0] = horizontal, root[1] = vertical, see
+// gridMatrix.ts), each prefilled with 3 empty labels so a fresh block starts
+// as a 3x3 grid; labels can then be added/removed per axis.
+const GRID_MATRIX_DEFAULT_SIZE = 3;
+function emptyGridMatrixAxes(): OutlineNode[] {
+  const axis = (): OutlineNode => ({
+    id: uuidv4(),
+    text: "",
+    children: Array.from({ length: GRID_MATRIX_DEFAULT_SIZE }, () => ({ id: uuidv4(), text: "", children: [] })),
+  });
+  return [axis(), axis()];
+}
+
 // A beforeAfter topic (root outline node) needs both its ASIS and TOBE
 // blocks (child[0]/child[1], see beforeAfter.ts) up front for the same
 // reason emptyPyramidChartRow above does - without them, a freshly-added
@@ -698,6 +720,9 @@ function newChildNode(block: StructuredBlock, parentNodeId: string): OutlineNode
 export function addFirstOutlineNode(doc: Document, blockId: string): Document {
   const block = findBlock(doc, blockId);
   if (!block || block.outline.length > 0) return doc;
+  // gridMatrix's outline is always exactly its two axes (gridMatrix.ts), so
+  // both come in at once rather than one root at a time.
+  if (block.pattern === "gridMatrix") return regenerateBlockShapes(doc, block, emptyGridMatrixAxes());
   const newNode: OutlineNode = newRootNode(block);
 
   if (isFullyRelayoutedPattern(block.pattern)) {
@@ -1022,6 +1047,15 @@ export function updateTimelineTitle(doc: Document, blockId: string, title: strin
   return regenerateBlockShapes(doc, updatedBlock, block.outline);
 }
 
+// gridMatrix's title (doc/spec.md §6.2.16) - same reasoning as
+// updateFlowScheduleTitle above.
+export function updateGridMatrixTitle(doc: Document, blockId: string, title: string): Document {
+  const block = findBlock(doc, blockId);
+  if (!block || block.pattern !== "gridMatrix") return doc;
+  const updatedBlock: StructuredBlock = { ...block, params: { ...block.params, title } };
+  return regenerateBlockShapes(doc, updatedBlock, block.outline);
+}
+
 // cycle/cycleWithEntry's center title (doc/spec.md §6.2.15) - same
 // reasoning as updateFlowScheduleTitle above.
 export function updateCycleTitle(doc: Document, blockId: string, title: string): Document {
@@ -1090,7 +1124,25 @@ function originOfBlock(doc: Document, block: StructuredBlock): { x: number; y: n
     .map((id) => doc.shapes[id])
     .filter((s): s is Shape => Boolean(s));
   if (shapes.length === 0) return { x: 40, y: 40 };
-  return { x: Math.min(...shapes.map((s) => s.x)), y: Math.min(...shapes.map((s) => s.y)) };
+  const corners = shapes.map(visualTopLeft);
+  return { x: Math.min(...corners.map((c) => c.x)), y: Math.min(...corners.map((c) => c.y)) };
+}
+
+// Top-left of a shape's bounding box as drawn, i.e. after its rotation around
+// its own center. Layouts place a rotated LayoutNode (gridMatrix's vertical
+// axis name) by where it ends up on screen, so its unrotated box can stick out
+// past the block's visible top-left; measuring the origin from that box would
+// shift the whole block on every regenerate.
+function visualTopLeft(shape: Shape): { x: number; y: number } {
+  if (!shape.rotation) return { x: shape.x, y: shape.y };
+  const rad = (shape.rotation * Math.PI) / 180;
+  // Rounded so a quarter turn yields exactly 0/1 - cos(-90°) is ~6e-17, which
+  // would otherwise nudge the block by a hair on every regenerate.
+  const cos = Math.abs(Math.round(Math.cos(rad) * 1e9) / 1e9);
+  const sin = Math.abs(Math.round(Math.sin(rad) * 1e9) / 1e9);
+  const halfWidth = (shape.width * cos + shape.height * sin) / 2;
+  const halfHeight = (shape.width * sin + shape.height * cos) / 2;
+  return { x: shape.x + shape.width / 2 - halfWidth, y: shape.y + shape.height / 2 - halfHeight };
 }
 
 // Recomputes every generated shape's position from a fresh layout of
@@ -1172,7 +1224,8 @@ function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline:
     block.pattern === "beforeAfterHorizontal" ||
     block.pattern === "chevronFlow" ||
     block.pattern === "cycle" ||
-    block.pattern === "cycleWithEntry"
+    block.pattern === "cycleWithEntry" ||
+    block.pattern === "gridMatrix"
       ? // flowScheduleHorizontal shares flowSchedule's exact reasoning
         // (untracked title/connector shapes, plus an index-derived number
         // that relayoutBlock would never touch) - see flowSchedule's own
@@ -1218,6 +1271,9 @@ function relayoutOrRegenerate(doc: Document, block: StructuredBlock, newOutline:
         // cycle/cycleWithEntry: every arrow's angle depends on the step
         // count and its own index, and an indented step's arrow would be
         // stranded the same way.
+        //
+        // gridMatrix: its tiles are untracked and their count follows the
+        // label counts.
         regenerateBlockShapes(doc, block, newOutline)
       : relayoutBlock(doc, block, newOutline);
   return regenerateTreeConnectors(next, block.id);
@@ -1304,7 +1360,7 @@ function regenerateBlockShapes(doc: Document, block: StructuredBlock, newOutline
       y: origin.y + layoutNode.y,
       width: layoutNode.width,
       height: layoutNode.height,
-      rotation: 0,
+      rotation: layoutNode.rotation ?? 0,
       zIndex: zIndex++,
       templateNodeIds: layoutNode.nodeIds,
     };
